@@ -1,0 +1,27 @@
+{
+  "entities": {
+    "GameState": {
+      "title": "Game State",
+      "description": "Represents the shared real-time state of the game board.",
+      "type": "object",
+      "properties": {
+        "bluePos": { "type": "object", "properties": { "x": { "type": "number" }, "y": { "type": "number" } } },
+        "redPos": { "type": "object", "properties": { "x": { "type": "number" }, "y": { "type": "number" } } },
+        "blueRot": { "type": "number" },
+        "redRot": { "type": "number" },
+        "blueTokens": { "type": "number" },
+        "redTokens": { "type": "number" },
+        "blueTrail": { "type": "array", "items": { "type": "string" } },
+        "redTrail": { "type": "array", "items": { "type": "string" } },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["bluePos", "redPos", "blueRot", "redRot", "blueTokens", "redTokens", "blueTrail", "redTrail", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/games/{gameId}": {
+      "schema": "GameState",
+      "description": "Shared game sessions."
+    }
+  }
+}

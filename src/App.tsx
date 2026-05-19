@@ -5,6 +5,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Minus, RotateCcw } from "lucide-react";
+import { db } from "./lib/firebase";
+import { doc, onSnapshot, updateDoc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
+
+const GAME_ID = "global";
 
 export default function App() {
   const size = 200;
@@ -35,6 +39,64 @@ export default function App() {
   // Trails - using string keys "x,y"
   const [blueTrail, setBlueTrail] = useState<string[]>([]);
   const [redTrail, setRedTrail] = useState<string[]>([]);
+
+  const [isInitializing, setIsInitializing] = useState(true);
+
+  // Sync with Firestore
+  useEffect(() => {
+    const gameRef = doc(db, "games", GAME_ID);
+
+    // Initial check/setup
+    const initGame = async () => {
+      const snap = await getDoc(gameRef);
+      if (!snap.exists()) {
+        await setDoc(gameRef, {
+          bluePos: initialBlue,
+          redPos: initialRed,
+          blueRot: -90,
+          redRot: -90,
+          blueTokens: 1000,
+          redTokens: 1000,
+          blueTrail: [],
+          redTrail: [],
+          updatedAt: serverTimestamp()
+        });
+      }
+      setIsInitializing(false);
+    };
+    initGame();
+
+    const unsubscribe = onSnapshot(gameRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        // Only update local state if the change came from another client
+        if (!snapshot.metadata.hasPendingWrites) {
+          setBluePos(data.bluePos);
+          setRedPos(data.redPos);
+          setBlueRot(data.blueRot);
+          setRedRot(data.redRot);
+          setBlueTokens(data.blueTokens);
+          setRedTokens(data.redTokens);
+          setBlueTrail(data.blueTrail || []);
+          setRedTrail(data.redTrail || []);
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const updateFirebase = async (updates: any) => {
+    try {
+      const gameRef = doc(db, "games", GAME_ID);
+      await updateDoc(gameRef, {
+        ...updates,
+        updatedAt: serverTimestamp()
+      });
+    } catch (e) {
+      console.error("Firebase update failed", e);
+    }
+  };
 
   // Memoize the cells to render them only once
   const cells = useMemo(() => {
@@ -116,34 +178,46 @@ export default function App() {
       
       // Blue controls (WASD)
       if (['w', 'a', 's', 'd'].includes(key)) {
-        setBluePos(prev => {
-          let next = { ...prev };
-          if (key === 'w' && prev.y > 0) { next.y -= 1; setBlueRot(-90); }
-          if (key === 's' && prev.y < size - 1) { next.y += 1; setBlueRot(90); }
-          if (key === 'a' && prev.x > 0) { next.x -= 1; setBlueRot(180); }
-          if (key === 'd' && prev.x < (size / 2) - 1) { next.x += 1; setBlueRot(0); }
-          
-          if (next.x !== prev.x || next.y !== prev.y) {
-            setBlueTrail(t => [...t, `${prev.x},${prev.y}`]);
-          }
-          return next;
-        });
+        let nextPos = { ...bluePos };
+        let nextRot = blueRot;
+        if (key === 'w' && bluePos.y > 0) { nextPos.y -= 1; nextRot = -90; }
+        if (key === 's' && bluePos.y < size - 1) { nextPos.y += 1; nextRot = 90; }
+        if (key === 'a' && bluePos.x > 0) { nextPos.x -= 1; nextRot = 180; }
+        if (key === 'd' && bluePos.x < (size / 2) - 1) { nextPos.x += 1; nextRot = 0; }
+        
+        if (nextPos.x !== bluePos.x || nextPos.y !== bluePos.y) {
+          const newTrail = [...blueTrail, `${bluePos.x},${bluePos.y}`];
+          setBluePos(nextPos);
+          setBlueRot(nextRot);
+          setBlueTrail(newTrail);
+          updateFirebase({
+            bluePos: nextPos,
+            blueRot: nextRot,
+            blueTrail: newTrail
+          });
+        }
       }
 
       // Red controls (Arrows)
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
-        setRedPos(prev => {
-          let next = { ...prev };
-          if (key === 'arrowup' && prev.y > 0) { next.y -= 1; setRedRot(-90); }
-          if (key === 'arrowdown' && prev.y < size - 1) { next.y += 1; setRedRot(90); }
-          if (key === 'arrowleft' && prev.x > size / 2) { next.x -= 1; setRedRot(180); }
-          if (key === 'arrowright' && prev.x < size - 1) { next.x += 1; setRedRot(0); }
-          
-          if (next.x !== prev.x || next.y !== prev.y) {
-            setRedTrail(t => [...t, `${prev.x},${prev.y}`]);
-          }
-          return next;
-        });
+        let nextPos = { ...redPos };
+        let nextRot = redRot;
+        if (key === 'arrowup' && redPos.y > 0) { nextPos.y -= 1; nextRot = -90; }
+        if (key === 'arrowdown' && redPos.y < size - 1) { nextPos.y += 1; nextRot = 90; }
+        if (key === 'arrowleft' && redPos.x > size / 2) { nextPos.x -= 1; nextRot = 180; }
+        if (key === 'arrowright' && redPos.x < size - 1) { nextPos.x += 1; nextRot = 0; }
+        
+        if (nextPos.x !== redPos.x || nextPos.y !== redPos.y) {
+          const newTrail = [...redTrail, `${redPos.x},${redPos.y}`];
+          setRedPos(nextPos);
+          setRedRot(nextRot);
+          setRedTrail(newTrail);
+          updateFirebase({
+            redPos: nextPos,
+            redRot: nextRot,
+            redTrail: newTrail
+          });
+        }
       }
     };
 
@@ -151,54 +225,77 @@ export default function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [size]);
 
-  const handleBatchMove = (steps: number, direction: string) => {
+  const handleBatchMove = async (steps: number, direction: string) => {
     if (!activeModal) return;
     const { side, type } = activeModal;
     
-    // side is who IS PRESSING the button
-    // targetSide is who IS MOVING
     const targetSide = type === 'move' ? side : (side === 'blue' ? 'red' : 'blue');
     const isBlueTarget = targetSide === 'blue';
-    const setPos = isBlueTarget ? setBluePos : setRedPos;
-    const setTrail = isBlueTarget ? setBlueTrail : setRedTrail;
-    const setRot = isBlueTarget ? setBlueRot : setRedRot;
-
-    // The side who pressed the button pays
-    const setTokensOfPayer = side === 'blue' ? setBlueTokens : setRedTokens;
-    const cost = type === 'move' ? steps : steps * 2;
     
-    setTokensOfPayer(prev => prev - cost);
+    // Get current values
+    const currentPos = isBlueTarget ? bluePos : redPos;
+    const currentTrail = isBlueTarget ? blueTrail : redTrail;
+    const currentTokens = side === 'blue' ? blueTokens : redTokens;
 
-    setPos(prev => {
-      let next = { ...prev };
-      let trailSet: string[] = [];
-      
-      for (let i = 0; i < steps; i++) {
-        const current = { ...next };
-        if (direction === 'up' && next.y > 0) { next.y -= 1; setRot(-90); }
-        if (direction === 'down' && next.y < size - 1) { next.y += 1; setRot(90); }
+    const cost = type === 'move' ? steps : steps * 2;
+    const nextTokens = currentTokens - cost;
+
+    let nextPos = { ...currentPos };
+    let newTrailSegment: string[] = [];
+    let nextRot = isBlueTarget ? blueRot : redRot;
+
+    for (let i = 0; i < steps; i++) {
+        const temp = { ...nextPos };
+        if (direction === 'up' && nextPos.y > 0) { nextPos.y -= 1; nextRot = -90; }
+        if (direction === 'down' && nextPos.y < size - 1) { nextPos.y += 1; nextRot = 90; }
         if (direction === 'left') {
-           if (isBlueTarget && next.x > 0) { next.x -= 1; setRot(180); }
-           else if (!isBlueTarget && next.x > size / 2) { next.x -= 1; setRot(180); }
+           if (isBlueTarget && nextPos.x > 0) { nextPos.x -= 1; nextRot = 180; }
+           else if (!isBlueTarget && nextPos.x > size / 2) { nextPos.x -= 1; nextRot = 180; }
         }
         if (direction === 'right') {
-           if (isBlueTarget && next.x < (size / 2) - 1) { next.x += 1; setRot(0); }
-           else if (!isBlueTarget && next.x < size - 1) { next.x += 1; setRot(0); }
+           if (isBlueTarget && nextPos.x < (size / 2) - 1) { nextPos.x += 1; nextRot = 0; }
+           else if (!isBlueTarget && nextPos.x < size - 1) { nextPos.x += 1; nextRot = 0; }
         }
         
-        if (next.x !== current.x || next.y !== current.y) {
-          trailSet.push(`${current.x},${current.y}`);
+        if (nextPos.x !== temp.x || nextPos.y !== temp.y) {
+          newTrailSegment.push(`${temp.x},${temp.y}`);
         } else {
-          break; // Hit edge
+          break;
         }
-      }
-      
-      if (trailSet.length > 0) {
-        setTrail(prevTrail => [...prevTrail, ...trailSet]);
-      }
-      return next;
-    });
+    }
 
+    const finalTrail = [...currentTrail, ...newTrailSegment];
+
+    // Optimistic local update
+    if (isBlueTarget) {
+      setBluePos(nextPos);
+      setBlueRot(nextRot);
+      setBlueTrail(finalTrail);
+    } else {
+      setRedPos(nextPos);
+      setRedRot(nextRot);
+      setRedTrail(finalTrail);
+    }
+
+    if (side === 'blue') setBlueTokens(nextTokens);
+    else setRedTokens(nextTokens);
+
+    // Firebase update
+    const updates: any = {};
+    if (isBlueTarget) {
+      updates.bluePos = nextPos;
+      updates.blueRot = nextRot;
+      updates.blueTrail = finalTrail;
+    } else {
+      updates.redPos = nextPos;
+      updates.redRot = nextRot;
+      updates.redTrail = finalTrail;
+    }
+    
+    if (side === 'blue') updates.blueTokens = nextTokens;
+    else updates.redTokens = nextTokens;
+
+    await updateFirebase(updates);
     setActiveModal(null);
   };
 
@@ -224,7 +321,18 @@ export default function App() {
     grid.style.transform = `translate(${transformRef.current.x}px, ${transformRef.current.y}px) scale(${transformRef.current.scale})`;
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
+    const updates = {
+      bluePos: initialBlue,
+      redPos: initialRed,
+      blueRot: -90,
+      redRot: -90,
+      blueTokens: 1000,
+      redTokens: 1000,
+      blueTrail: [],
+      redTrail: []
+    };
+    
     setBluePos(initialBlue);
     setRedPos(initialRed);
     setBlueRot(-90);
@@ -233,6 +341,8 @@ export default function App() {
     setRedTokens(1000);
     setBlueTrail([]);
     setRedTrail([]);
+
+    await updateFirebase(updates);
   };
 
   return (

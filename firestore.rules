@@ -1,0 +1,23 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Catch-all deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Shared game state
+    match /games/{gameId} {
+      allow read: if true;
+      allow write: if isValidGameState(request.resource.data);
+    }
+  }
+
+  function isValidGameState(data) {
+    return data.keys().hasAll(['bluePos', 'redPos', 'blueRot', 'redRot', 'blueTokens', 'redTokens', 'blueTrail', 'redTrail', 'updatedAt'])
+      && data.bluePos is map
+      && data.redPos is map
+      && data.blueTokens is number
+      && data.redTokens is number;
+  }
+}
