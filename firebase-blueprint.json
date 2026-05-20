@@ -1,5 +1,17 @@
 {
   "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with donation stats.",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "totalDonated": { "type": "number" },
+        "currentTokens": { "type": "number" }
+      },
+      "required": ["displayName", "totalDonated", "currentTokens"]
+    },
     "GameState": {
       "title": "Game State",
       "description": "Represents the shared real-time state of the game board.",
@@ -13,12 +25,22 @@
         "redTokens": { "type": "number" },
         "blueTrail": { "type": "array", "items": { "type": "string" } },
         "redTrail": { "type": "array", "items": { "type": "string" } },
+        "walls": { "type": "array", "items": { "type": "string" } },
+        "mines": { "type": "array", "items": { "type": "string" } },
+        "minesRevealed": { "type": "boolean" },
+        "logs": { "type": "array", "items": { "type": "object", "properties": { "msg": { "type": "string" }, "time": { "type": "string" } } } },
+        "sprintBlue": { "type": "number" },
+        "sprintRed": { "type": "number" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["bluePos", "redPos", "blueRot", "redRot", "blueTokens", "redTokens", "blueTrail", "redTrail", "updatedAt"]
+      "required": ["bluePos", "redPos", "blueRot", "redRot", "blueTokens", "redTokens", "blueTrail", "redTrail", "walls", "mines", "updatedAt"]
     }
   },
   "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles."
+    },
     "/games/{gameId}": {
       "schema": "GameState",
       "description": "Shared game sessions."

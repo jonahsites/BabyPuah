@@ -1,6 +1,6 @@
 {
-  "name": "Zoom Pan Grid",
-  "description": "A 200x200 grid workspace with zoom and pan capabilities.",
+  "name": "Territory War",
+  "description": "A strategic 200x200 grid game of territory and tokens.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
