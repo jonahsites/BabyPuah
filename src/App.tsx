@@ -5,6 +5,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Minus, RotateCcw } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 import { db, auth } from "./lib/firebase";
 import { doc, onSnapshot, updateDoc, setDoc, getDoc, serverTimestamp, increment, collection, query, orderBy, limit, getDocs } from "firebase/firestore";
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, User as FirebaseUser } from "firebase/auth";
@@ -753,76 +754,110 @@ export default function App() {
   return (
     <div 
       ref={viewportRef}
-      className="w-screen h-screen overflow-hidden bg-[#111] cursor-grab select-none flex items-start justify-start"
+      className="w-screen h-screen overflow-hidden bg-[#eae6dc] cursor-grab select-none flex items-start justify-start relative font-sans"
+      style={{
+        backgroundImage: 'radial-gradient(#1e1a15 8%, transparent 8%)',
+        backgroundSize: '24px 24px'
+      }}
     >
       {/* Team Selection Overlay */}
       {userRole === 'none' && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/90 backdrop-blur-md">
-          <div className="max-w-md w-full px-8 text-center">
-            <h1 className="text-4xl font-black text-white mb-2 italic tracking-tighter uppercase">Pick Your Side</h1>
-            <p className="text-white/40 text-sm mb-12 uppercase tracking-widest font-mono">Territory War Simulation v1.0</p>
-            <div className="grid grid-cols-2 gap-6">
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-[#eae6dc]/80 backdrop-blur-sm p-4">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="max-w-xl w-full bg-[#fdfaf2] border-4 border-black rounded-3xl p-8 text-center shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden"
+          >
+            {/* Playful neobrutalist corner background strips */}
+            <div className="absolute top-0 right-0 w-24 h-6 bg-yellow-400 border-b-4 border-l-4 border-black -skew-x-12 transform translate-x-4 -translate-y-1" />
+            <div className="absolute bottom-0 left-0 w-28 h-8 bg-rose-400 border-t-4 border-r-4 border-black -skew-x-12 transform -translate-x-4 translate-y-1" />
+            
+            <motion.h1 
+              initial={{ y: -10 }}
+              animate={{ y: 0 }}
+              className="text-4xl sm:text-5xl font-black text-black tracking-tight uppercase"
+            >
+              Pick Your Side
+            </motion.h1>
+            <p className="text-black/60 text-xs mt-2 uppercase tracking-widest font-mono font-bold mb-10">
+              ⚡ Territory War Grid v2.0 ⚡
+            </p>
+            
+            <div className="grid grid-cols-2 gap-6 relative z-10">
               <button 
                 onClick={() => setUserRole('blue')}
-                className="group relative overflow-hidden bg-blue-600/10 border-2 border-blue-600/30 p-8 rounded-2xl hover:bg-blue-600/20 hover:border-blue-500 transition-all duration-500"
+                className="group relative overflow-hidden bg-[#3b82f6] text-white border-4 border-black p-6 rounded-2xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:-translate-x-1 hover:shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] active:translate-y-1 active:translate-x-1 active:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all duration-150 cursor-pointer text-center"
               >
-                <div className="relative z-10">
-                    <div className="text-4xl mb-4 group-hover:scale-110 transition-transform">🟦</div>
-                    <div className="text-2xl font-bold text-blue-400 group-hover:text-blue-300">BLUE</div>
-                    <div className="text-[10px] text-blue-500/50 mt-2 uppercase font-mono">Strategic Defense</div>
-                </div>
+                <div className="text-5xl mb-4 drop-shadow-[2px_2px_0px_rgba(0,0,0,1)] group-hover:scale-110 transition-transform">🟦</div>
+                <div className="text-2xl font-black tracking-tight">TEAM BLUE</div>
+                <div className="text-[10px] text-blue-100 font-bold uppercase tracking-wider font-mono mt-2">Strategic Defense</div>
               </button>
+              
               <button 
                 onClick={() => setUserRole('red')}
-                className="group relative overflow-hidden bg-red-600/10 border-2 border-red-600/30 p-8 rounded-2xl hover:bg-red-600/20 hover:border-red-500 transition-all duration-500"
+                className="group relative overflow-hidden bg-[#ef4444] text-white border-4 border-black p-6 rounded-2xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:-translate-x-1 hover:shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] active:translate-y-1 active:translate-x-1 active:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all duration-150 cursor-pointer text-center"
               >
-                <div className="relative z-10">
-                    <div className="text-4xl mb-4 group-hover:scale-110 transition-transform">🟥</div>
-                    <div className="text-2xl font-bold text-red-400 group-hover:text-red-300">RED</div>
-                    <div className="text-[10px] text-red-500/50 mt-2 uppercase font-mono">Aggressive Maneuver</div>
-                </div>
+                <div className="text-5xl mb-4 drop-shadow-[2px_2px_0px_rgba(0,0,0,1)] group-hover:scale-110 transition-transform">🟥</div>
+                <div className="text-2xl font-black tracking-tight">TEAM RED</div>
+                <div className="text-[10px] text-red-100 font-bold uppercase tracking-wider font-mono mt-2">Aggressive Maneuver</div>
               </button>
             </div>
+            
             <button 
               onClick={() => setUserRole('admin')}
-              className="mt-12 text-white/10 hover:text-white/30 text-[9px] uppercase tracking-[0.2em] transition-colors"
+              className="mt-10 px-4 py-2 bg-yellow-300 text-black border-2 border-black rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-yellow-400 transition-colors shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:translate-x-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
             >
-              Enter as Admin
+              Enter as Spectator / Admin
             </button>
-          </div>
+          </motion.div>
         </div>
       )}
 
       {/* Mine Alert Popup */}
       {mineAlert && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-md">
-          <div className="bg-[#111] border-2 border-red-500/50 p-8 rounded-2xl max-w-xs w-full text-center shadow-[0_0_50px_rgba(239,68,68,0.3)]">
-            <div className="text-5xl mb-4 animate-bounce">💥</div>
-            <h2 className="text-2xl font-black text-white italic uppercase tracking-tighter mb-2">Boom!</h2>
-            <p className="text-red-400 font-mono text-xs uppercase tracking-widest mb-6">You hit a mine and were sent back to start</p>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <motion.div 
+            initial={{ rotate: -5, scale: 0.9 }}
+            animate={{ rotate: 0, scale: 1 }}
+            className="bg-yellow-300 border-4 border-black p-8 rounded-3xl max-w-sm w-full text-center shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden"
+          >
+            <div className="text-6xl mb-4 animate-bounce">💥</div>
+            <h2 className="text-3xl font-black text-black uppercase tracking-tight">KABOOM!</h2>
+            <p className="text-black font-mono text-xs font-bold uppercase tracking-wider mt-2 mb-6">
+              You hit an explosive mine and got blown back to spawn!
+            </p>
             <button 
               onClick={() => setMineAlert(null)}
-              className="w-full py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg transition-all uppercase text-[10px] tracking-widest"
+              className="w-full py-3 bg-red-500 hover:bg-red-600 text-white font-black border-3 border-black rounded-xl hover:-translate-y-0.5 active:translate-y-0.5 transition-all uppercase text-xs tracking-wider shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
             >
-              Continue
+              RE-ENTER ENEMY GRID &rarr;
             </button>
-          </div>
+          </motion.div>
         </div>
       )}
 
       {/* Batch Move Modal */}
       {activeModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-[#1a1a1a] border border-white/10 p-6 rounded-2xl shadow-2xl w-80">
-            <h3 className="text-white font-bold mb-4 uppercase tracking-wider text-sm flex items-center gap-2">
-              <div className={`w-3 h-3 rounded-full ${activeModal.side === 'blue' ? 'bg-blue-500' : 'bg-red-500'}`} />
-              {activeModal.type === 'move' ? `Move ${activeModal.side}` : 
-               activeModal.type === 'grid' ? `Grid (Push ${activeModal.side === 'blue' ? 'Red' : 'Blue'})` :
-               activeModal.type === 'teleport' ? `Teleport ${activeModal.side}` :
-               activeModal.type === 'mine' ? `Minefield ${activeModal.side}` :
-               activeModal.type === 'jackpot' ? `Jackpot ${activeModal.side}` :
-               `Wall ${activeModal.side}`}
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <motion.div 
+            initial={{ scale: 0.95 }}
+            animate={{ scale: 1 }}
+            className="bg-white border-4 border-black p-6 rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] w-80 relative font-sans text-black"
+          >
+            {/* Decorative corner tag */}
+            <div className={`absolute top-0 right-0 px-3 py-1 text-[9px] font-black uppercase text-white border-b-3 border-l-3 border-black rounded-tr-[12px] ${activeModal.side === 'blue' ? 'bg-[#3b82f6]' : 'bg-[#ef4444]'}`}>
+              {activeModal.side} team
+            </div>
+
+            <h3 className="text-black font-black mb-4 uppercase tracking-tight text-lg mt-2 flex items-center gap-2">
+              {activeModal.type === 'move' ? `💥 Move ${activeModal.side}` : 
+               activeModal.type === 'grid' ? `♟️ Push Grid` :
+               activeModal.type === 'teleport' ? `🔮 Teleport` :
+               activeModal.type === 'mine' ? `💣 Minefield` :
+               activeModal.type === 'jackpot' ? `🎰 Jackpot Spin` :
+               `🚧 Erect Wall`}
             </h3>
+            
             {activeModal.type === 'move' || activeModal.type === 'grid' ? (
               <form onSubmit={(e) => {
                 e.preventDefault();
@@ -833,41 +868,43 @@ export default function App() {
               }}>
                 <div className="space-y-4">
                   <div>
-                    <label className="text-white/50 text-[10px] uppercase block mb-1">
-                      Steps ({activeModal.type === 'move' ? '1' : '2'} token/step)
+                    <label className="text-black/70 font-black text-[10px] uppercase block mb-1">
+                      Steps ({activeModal.type === 'move' ? '1' : '2'} tokens per step)
                     </label>
                     <input 
                       name="steps" 
                       type="number" 
                       min="1" 
                       defaultValue="10"
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white outline-none focus:border-white/30"
+                      className="w-full bg-yellow-50 border-3 border-black rounded-xl px-3 py-2 text-black font-black outline-none focus:bg-yellow-105"
                       required
                     />
                   </div>
                   <div>
-                    <label className="text-white/50 text-[10px] uppercase block mb-1">Direction</label>
-                    <select 
-                      name="direction"
-                      className="w-full bg-[#222] border border-white/10 rounded-lg px-3 py-2 text-white outline-none focus:border-white/30 appearance-none"
-                    >
-                      <option value="up">Up</option>
-                      <option value="down">Down</option>
-                      <option value="left">Left</option>
-                      <option value="right">Right</option>
-                    </select>
+                    <label className="text-black/70 font-black text-[10px] uppercase block mb-1">Direction</label>
+                    <div className="relative">
+                      <select 
+                        name="direction"
+                        className="w-full bg-white border-3 border-black rounded-xl px-3 py-2 text-black font-black outline-none appearance-none"
+                      >
+                        <option value="up">▲ Up</option>
+                        <option value="down">▼ Down</option>
+                        <option value="left">◀ Left</option>
+                        <option value="right">▶ Right</option>
+                      </select>
+                    </div>
                   </div>
-                  <div className="flex gap-2 pt-2">
+                  <div className="flex gap-3 pt-2">
                     <button 
                       type="button"
                       onClick={() => setActiveModal(null)}
-                      className="flex-1 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white text-sm transition-colors"
+                      className="flex-1 px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-black border-2 border-black text-xs font-black uppercase transition-colors cursor-pointer"
                     >
                       Cancel
                     </button>
                     <button 
                       type="submit"
-                      className={`flex-1 px-4 py-2 rounded-lg text-white text-sm font-bold transition-transform active:scale-95 ${activeModal.side === 'blue' ? 'bg-blue-600' : 'bg-red-600'}`}
+                      className={`flex-1 px-4 py-2 rounded-xl text-white text-xs font-black uppercase border-2 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer ${activeModal.side === 'blue' ? 'bg-[#3b82f6]' : 'bg-[#ef4444]'}`}
                     >
                       Confirm
                     </button>
@@ -876,31 +913,31 @@ export default function App() {
               </form>
             ) : (
                 <div className="space-y-4">
-                   <p className="text-white/70 text-xs">
-                     {activeModal.type === 'teleport' ? "Teleport to a random square within 5 pixels for 5 tokens?" :
-                      activeModal.type === 'mine' ? "Deploy 20 invisible mines for 20 tokens?" :
-                      activeModal.type === 'jackpot' ? "Spin for 1 to 50 steps for 10 tokens?" :
-                      "How many tokens do you want to spend on this wall? (2 tokens per pixel)"}
+                   <p className="text-black/80 text-xs font-bold leading-relaxed">
+                     {activeModal.type === 'teleport' ? "🔮 Teleport to a random safe zone within 5 range blocks? (Cost: 5 tokens)" :
+                      activeModal.type === 'mine' ? "💣 Disperse a barrage of 20 invisible stealth mines across the grid? (Cost: 20 tokens)" :
+                      activeModal.type === 'jackpot' ? "🎰 Spin the physical wheel for a random payload of 1 to 50 moves! (Cost: 10 tokens)" :
+                      "How many tokens do you want to assign to this fortification? (Wall costs 2 tokens per pixel)"}
                    </p>
                    {activeModal.type === 'wall' && (
                      <div>
-                       <label className="text-white/50 text-[10px] uppercase block mb-1">Tokens (Multiples of 2)</label>
+                       <label className="text-black/70 font-black text-[10px] uppercase block mb-1">Tokens (Multiples of 2)</label>
                        <input 
                          id="wall-budget"
                          type="number" 
                          min="2" 
                          step="2"
                          defaultValue="20"
-                         className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white outline-none focus:border-white/30"
+                         className="w-full bg-yellow-50 border-3 border-black rounded-xl px-3 py-2 text-black font-black outline-none focus:bg-yellow-105"
                          required
                        />
                      </div>
                    )}
-                   <div className="flex gap-2 pt-2">
+                   <div className="flex gap-3 pt-2">
                     <button 
                       type="button"
                       onClick={() => setActiveModal(null)}
-                      className="flex-1 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white text-sm transition-colors"
+                      className="flex-1 px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-black border-2 border-black text-xs font-black uppercase transition-colors cursor-pointer"
                     >
                       Cancel
                     </button>
@@ -918,14 +955,14 @@ export default function App() {
                           }
                         }
                       }}
-                      className={`flex-1 px-4 py-2 rounded-lg text-white text-sm font-bold transition-transform active:scale-95 ${activeModal.side === 'blue' ? 'bg-blue-600' : 'bg-red-600'}`}
+                      className={`flex-1 px-4 py-2 rounded-xl text-white text-xs font-black uppercase border-2 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer ${activeModal.side === 'blue' ? 'bg-[#3b82f6]' : 'bg-[#ef4444]'}`}
                     >
                       Confirm
                     </button>
                   </div>
                 </div>
             )}
-          </div>
+          </motion.div>
         </div>
       )}
 
@@ -940,69 +977,121 @@ export default function App() {
 
       {/* Wall Building Hint */}
       {isWallBuilding && (
-        <div className={`fixed top-32 left-1/2 -translate-x-1/2 z-[80] text-black px-4 py-2 rounded-full font-bold text-sm shadow-xl animate-bounce ${isWallBuilding.side === 'blue' ? 'bg-blue-400' : 'bg-red-400'}`}>
+        <div className={`fixed top-32 left-1/2 -translate-x-1/2 z-[80] text-black px-4 py-2 rounded-full font-bold text-sm shadow-xl animate-bounce bg-yellow-300 border-2 border-black`}>
           CLICK GRID TO PLACE WALL PIXELS ({isWallBuilding.budget / 2} LEFT)
-          <button onClick={() => setIsWallBuilding(null)} className="ml-4 text-black/60 underline text-xs">FINISH</button>
+          <button onClick={() => setIsWallBuilding(null)} className="ml-4 text-black/60 underline text-xs font-black">FINISH &times;</button>
         </div>
       )}
 
       {/* FIXED BOTTOM HUD */}
-      <div className="fixed bottom-0 left-0 w-full h-24 bg-black/40 backdrop-blur-xl border-t border-white/5 flex items-center justify-between px-8 z-50">
+      <div className="fixed bottom-0 left-0 w-full h-24 bg-[#fcfaf4] border-t-4 border-black flex items-center justify-between px-8 z-50 shadow-[0_-5px_0px_0px_rgba(0,0,0,1)] text-black">
         
         {/* Blue Side HUD */}
         <div className={`flex items-center gap-4 transition-opacity ${!canControl('blue') ? 'opacity-30 pointer-events-none grayscale' : ''}`}>
-          <div className="flex flex-col group cursor-pointer" onClick={() => setIsPurchaseModalOpen(true)}>
-            <span className="text-[10px] text-blue-400 font-bold uppercase tracking-widest">Team Blue</span>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-blue-100/60 font-mono tracking-tighter">
-                {user ? `${profile?.currentTokens || 0} Tokens` : '$1,000 Global Base'}
+          <div className="flex flex-col group cursor-pointer bg-white border-2 border-black p-1.5 rounded-xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all" onClick={() => setIsPurchaseModalOpen(true)}>
+            <span className="text-[10px] text-blue-600 font-black uppercase tracking-wider">💙 Team Blue</span>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-[10px] text-black font-mono font-bold">
+                {user ? `${profile?.currentTokens || 0} Tokens` : '$1,000 Base'}
               </span>
-              <button className="text-[8px] bg-white/10 text-white rounded px-1 group-hover:bg-blue-600 transition-colors">BUY</button>
+              <button className="text-[8px] bg-yellow-300 text-black border border-black font-black rounded px-1 transition-colors uppercase">REFILL</button>
             </div>
-            {sprintBlue > Date.now() && <span className="text-[8px] text-blue-300 animate-pulse">SPRINT ACTIVE</span>}
+            {sprintBlue > Date.now() && <span className="text-[8px] text-blue-600 font-black tracking-widest animate-pulse">⚡ SPRINT ACTIVE</span>}
           </div>
+
           <div className="flex gap-2">
             <button 
               onClick={() => setActiveModal({ side: 'blue', type: 'move' })}
-              className="w-10 h-10 flex items-center justify-center bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-500/20 rounded transition-all text-[7px] font-bold uppercase text-center p-1"
-            >Move</button>
+              className="w-10 h-10 flex items-center justify-center bg-[#3b82f6] border-2 border-black rounded-lg transition-all hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] overflow-hidden group p-0 cursor-pointer"
+              title="Move"
+            >
+              <img 
+                src="https://lh3.googleusercontent.com/d/1TvYWWub6eSmW6A6tU4qsyNOGc-w6AU2S" 
+                alt="Move" 
+                className="w-full h-full object-cover group-hover:scale-110 transition-transform" 
+                referrerPolicy="no-referrer"
+              />
+            </button>
             <button 
               onClick={() => setActiveModal({ side: 'blue', type: 'grid' })}
-              className="w-10 h-10 flex items-center justify-center bg-blue-900/40 hover:bg-blue-800/60 text-blue-100 border border-blue-500/30 rounded transition-all text-[7px] font-bold uppercase text-center p-1"
-            >Grid</button>
+              className="w-10 h-10 flex flex-col items-center justify-center bg-blue-105 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+              title="Push Grid"
+            >
+              <span className="text-sm">♟️</span>
+              <span className="text-[6px] tracking-tighter">GRID</span>
+            </button>
             <button 
               onClick={() => setActiveModal({ side: 'blue', type: 'teleport' })}
-              className="w-10 h-10 flex items-center justify-center bg-purple-600/20 hover:bg-purple-600/40 text-purple-400 border border-purple-500/20 rounded transition-all text-[7px] font-bold uppercase text-center p-1"
-            >Tele</button>
+              className="w-10 h-10 flex flex-col items-center justify-center bg-purple-200 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+              title="Teleport"
+            >
+              <span className="text-sm">🔮</span>
+              <span className="text-[6px] tracking-tighter">TELE</span>
+            </button>
             <button 
               onClick={() => setActiveModal({ side: 'blue', type: 'wall' })}
-              className="w-10 h-10 flex items-center justify-center bg-slate-600/20 hover:bg-slate-600/40 text-slate-400 border border-slate-500/20 rounded transition-all text-[7px] font-bold uppercase text-center p-1"
-            >Wall</button>
+              className="w-10 h-10 flex items-center justify-center bg-slate-200 border-2 border-black rounded-lg transition-all hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] overflow-hidden group p-0 cursor-pointer"
+              title="Wall"
+            >
+              <img 
+                src="https://lh3.googleusercontent.com/d/1rBi5p3nph5wzTIc10Jw37rOlxuy73i3B" 
+                alt="Wall" 
+                className="w-full h-full object-cover group-hover:scale-110 transition-transform" 
+                referrerPolicy="no-referrer"
+              />
+            </button>
             <button 
               onClick={() => setActiveModal({ side: 'blue', type: 'mine' })}
-              className="w-10 h-10 flex items-center justify-center bg-orange-600/20 hover:bg-orange-600/40 text-orange-400 border border-orange-500/20 rounded transition-all text-[7px] font-bold uppercase text-center p-1"
-            >Mine</button>
+              className="w-10 h-10 flex items-center justify-center bg-orange-200 border-2 border-black rounded-lg transition-all hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] overflow-hidden group p-0 cursor-pointer"
+              title="Mine"
+            >
+              <img 
+                src="https://lh3.googleusercontent.com/d/1AeiB3J6kixiXb6MYcCRQWT_XCtJhhLpT" 
+                alt="Mine" 
+                className="w-full h-full object-cover group-hover:scale-110 transition-transform" 
+                referrerPolicy="no-referrer"
+              />
+            </button>
             <button 
               onClick={() => setActiveModal({ side: 'blue', type: 'jackpot' })}
-              className="w-10 h-10 flex items-center justify-center bg-yellow-600/20 hover:bg-yellow-600/40 text-yellow-400 border border-yellow-500/20 rounded transition-all text-[7px] font-bold uppercase text-center p-1"
-            >Luck</button>
+              className="w-10 h-10 flex items-center justify-center bg-yellow-200 border-2 border-black rounded-lg transition-all hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] overflow-hidden group p-0 cursor-pointer"
+              title="Luck"
+            >
+              <img 
+                src="https://lh3.googleusercontent.com/d/1MXcNd2BDfT_nNMukm-4PeNPWtokkBiUt" 
+                alt="Luck" 
+                className="w-full h-full object-cover group-hover:scale-110 transition-transform" 
+                referrerPolicy="no-referrer"
+              />
+            </button>
             <button 
               onClick={() => handleSprint('blue')}
-              className="w-10 h-10 flex items-center justify-center bg-cyan-600/20 hover:bg-cyan-600/40 text-cyan-400 border border-cyan-500/20 rounded transition-all text-[7px] font-bold uppercase text-center p-1"
-            >Run</button>
+              className="w-10 h-10 flex flex-col items-center justify-center bg-cyan-200 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+              title="Sprint Run"
+            >
+              <span className="text-sm">🏃</span>
+              <span className="text-[6px] tracking-tighter">RUN</span>
+            </button>
+            
             {mines.length > 0 && (
               <div className="flex gap-1">
                 {!minesRevealed && (
                   <button 
                     onClick={() => handleRevealMines('blue')}
-                    className="w-10 h-10 flex items-center justify-center bg-orange-900/40 hover:bg-orange-800/60 text-orange-200 border border-orange-500/30 rounded transition-all text-[7px] font-bold uppercase text-center p-1"
-                  >See Mines</button>
+                    className="w-10 h-10 flex flex-col items-center justify-center bg-amber-200 border-2 border-black rounded-lg text-black font-bold text-[8px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+                  >
+                    <span>👁️</span>
+                    <span className="text-[5px]">MINES</span>
+                  </button>
                 )}
                 {minesRevealed && (
                   <button 
                     onClick={() => handleClearMines('blue')}
-                    className="w-10 h-10 flex items-center justify-center bg-red-900/40 hover:bg-red-800/60 text-red-100 border border-red-500/30 rounded transition-all text-[7px] font-bold uppercase text-center p-1"
-                  >Clear Mines</button>
+                    className="w-10 h-10 flex flex-col items-center justify-center bg-rose-200 border-2 border-black rounded-lg text-black font-bold text-[8px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+                  >
+                    <span>🧹</span>
+                    <span className="text-[5px]">CLEAR</span>
+                  </button>
                 )}
               </div>
             )}
@@ -1010,63 +1099,68 @@ export default function App() {
         </div>
 
         {/* Global Controls HUD */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           {userRole === 'admin' && (
             <button 
               onClick={() => setUserRole('none')}
-              className="w-12 h-12 flex flex-col items-center justify-center bg-purple-600/20 hover:bg-purple-600/40 text-purple-400 border border-purple-500/20 rounded-lg transition-all"
+              className="w-12 h-12 flex flex-col items-center justify-center bg-purple-300 border-2 border-black rounded-xl hover:-translate-y-0.5 active:translate-y-0.5 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] text-black cursor-pointer"
               title="Change Side"
             >
-              <div className="text-[8px] font-bold">ADMIN</div>
-              <div className="text-[7px]">EXIT</div>
+              <div className="text-[8px] font-black uppercase">ADMIN</div>
+              <div className="text-[7px] font-bold">EXIT</div>
             </button>
           )}
           <button 
             onClick={handleReset}
-            className="w-12 h-12 flex items-center justify-center bg-red-600/20 hover:bg-red-600/40 text-red-400 border border-red-500/20 rounded-lg transition-all"
-            title="Reset"
+            className="w-12 h-12 flex items-center justify-center bg-rose-300 border-2 border-black rounded-xl hover:-translate-y-0.5 active:translate-y-0.5 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] text-black cursor-pointer"
+            title="Reset Game"
           >
-            <RotateCcw size={20} />
+            <RotateCcw size={18} className="font-bold stroke-[3]" />
           </button>
-          <div className="flex flex-col gap-1">
+          
+          <div className="flex items-center border-2 border-black bg-white rounded-xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] overflow-hidden">
             <button 
               onClick={() => handleZoom('in')}
-              className="w-10 h-5 flex items-center justify-center bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-t-sm"
+              className="w-8 h-8 flex items-center justify-center bg-gray-50 hover:bg-gray-150 text-black border-r-2 border-black cursor-pointer font-black"
             >
-              <Plus size={12} />
+              <Plus size={14} className="stroke-[3]" />
             </button>
             <button 
               onClick={() => handleZoom('out')}
-              className="w-10 h-5 flex items-center justify-center bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-b-sm"
+              className="w-8 h-8 flex items-center justify-center bg-gray-50 hover:bg-gray-150 text-black cursor-pointer font-black"
             >
-              <Minus size={12} />
+              <Minus size={14} className="stroke-[3]" />
             </button>
           </div>
         </div>
 
         {/* Global Log Toggle */}
-        <div className="fixed right-4 bottom-28 z-[60] flex flex-col items-end gap-2">
+        <div className="fixed right-6 bottom-28 z-[60] flex flex-col items-end gap-2.5">
            <button 
              onClick={() => setIsLogOpen(!isLogOpen)}
-             className="bg-black/60 backdrop-blur-md border border-white/10 p-2 rounded-full text-white/50 hover:text-white transition-colors shadow-xl"
+             className="bg-white border-3 border-black px-4 py-2 rounded-full text-black hover:-translate-y-0.5 active:translate-y-0.5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-transform cursor-pointer"
            >
-             <div className="text-[10px] uppercase font-bold px-2 tracking-tighter">
-               {isLogOpen ? 'Hide Log' : 'Show Log'}
+             <div className="text-[10px] uppercase font-black tracking-wider flex items-center gap-1">
+               <span>📜</span> {isLogOpen ? 'Hide Logs' : 'Show Logs'}
              </div>
            </button>
            
            {isLogOpen && (
-             <div className="w-64 h-64 bg-black/60 backdrop-blur-md border border-white/10 rounded-xl p-3 overflow-y-auto font-mono text-[9px] shadow-2xl animate-in slide-in-from-right-4 transition-all">
-               <div className="text-white/30 uppercase tracking-widest mb-1 border-b border-white/5 pb-1 flex justify-between">
-                 <span>Activity Log</span>
+             <motion.div 
+               initial={{ opacity: 0, y: 10, scale: 0.95 }}
+               animate={{ opacity: 1, y: 0, scale: 1 }}
+               className="w-72 h-64 bg-[#fffef4] border-3 border-black rounded-2xl p-4 overflow-y-auto font-mono text-[9px] shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] text-black text-left"
+             >
+               <div className="text-black/50 uppercase tracking-widest font-black mb-2.5 border-b-2 border-black pb-1.5 flex justify-between">
+                 <span>🌐 Activity Log</span>
                </div>
-               {logs.length === 0 && <div className="text-white/10 italic mt-4 text-center">No activity yet</div>}
+               {logs.length === 0 && <div className="text-black/30 italic mt-6 text-center">Empty ledger state</div>}
                {logs.map((log, i) => (
-                 <div key={i} className="text-white/60 mb-0.5 border-l border-white/5 pl-2">
-                   <span className="text-white/20">[{log.time}]</span> {log.msg}
+                 <div key={i} className="text-black/80 mb-1 pl-1 line-clamp-2">
+                   <span className="text-black/40 font-black">[{log.time}]</span> {log.msg}
                  </div>
                ))}
-             </div>
+             </motion.div>
            )}
         </div>
 
@@ -1075,89 +1169,124 @@ export default function App() {
           <div className="flex gap-2">
             {mines.length > 0 && (
               <div className="flex gap-1">
-                  {!minesRevealed && (
+                {!minesRevealed && (
                   <button 
                     onClick={() => handleRevealMines('red')}
-                    className="w-10 h-10 flex items-center justify-center bg-orange-900/40 hover:bg-orange-800/60 text-orange-200 border border-orange-500/30 rounded transition-all text-[7px] font-bold uppercase text-center p-1"
-                  >See Mines</button>
+                    className="w-10 h-10 flex flex-col items-center justify-center bg-amber-200 border-2 border-black rounded-lg text-black font-bold text-[8px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+                  >
+                    <span>👁️</span>
+                    <span className="text-[5px]">MINES</span>
+                  </button>
                 )}
                 {minesRevealed && (
                   <button 
                     onClick={() => handleClearMines('red')}
-                    className="w-10 h-10 flex items-center justify-center bg-red-900/40 hover:bg-red-800/60 text-red-100 border border-red-500/30 rounded transition-all text-[7px] font-bold uppercase text-center p-1"
-                  >Clear Mines</button>
+                    className="w-10 h-10 flex flex-col items-center justify-center bg-rose-200 border-2 border-black rounded-lg text-black font-bold text-[8px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+                  >
+                    <span>🧹</span>
+                    <span className="text-[5px]">CLEAR</span>
+                  </button>
                 )}
               </div>
             )}
             <button 
               onClick={() => handleSprint('red')}
-              className="w-10 h-10 flex items-center justify-center bg-cyan-600/20 hover:bg-cyan-600/40 text-cyan-400 border border-cyan-500/20 rounded transition-all text-[7px] font-bold uppercase text-center p-1"
-            >Run</button>
+              className="w-10 h-10 flex flex-col items-center justify-center bg-cyan-200 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+              title="Sprint Run"
+            >
+              <span className="text-sm">🏃</span>
+              <span className="text-[6px] tracking-tighter">RUN</span>
+            </button>
             <button 
               onClick={() => setActiveModal({ side: 'red', type: 'jackpot' })}
-              className="w-10 h-10 flex items-center justify-center bg-yellow-600/20 hover:bg-yellow-600/40 text-yellow-400 border border-yellow-500/20 rounded transition-all text-[7px] font-bold uppercase text-center p-1"
-            >Luck</button>
+              className="w-10 h-10 flex flex-col items-center justify-center bg-yellow-200 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+              title="Lucky Jackpot"
+            >
+              <span className="text-sm">🎰</span>
+              <span className="text-[6px] tracking-tighter">LUCK</span>
+            </button>
             <button 
               onClick={() => setActiveModal({ side: 'red', type: 'mine' })}
-              className="w-10 h-10 flex items-center justify-center bg-orange-600/20 hover:bg-orange-600/40 text-orange-400 border border-orange-500/20 rounded transition-all text-[7px] font-bold uppercase text-center p-1"
-            >Mine</button>
+              className="w-10 h-10 flex flex-col items-center justify-center bg-orange-200 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+              title="Minefield"
+            >
+              <span className="text-sm">💣</span>
+              <span className="text-[6px] tracking-tighter">MINE</span>
+            </button>
             <button 
               onClick={() => setActiveModal({ side: 'red', type: 'wall' })}
-              className="w-10 h-10 flex items-center justify-center bg-slate-600/20 hover:bg-slate-600/40 text-slate-400 border border-slate-500/20 rounded transition-all text-[7px] font-bold uppercase text-center p-1"
-            >Wall</button>
+              className="w-10 h-10 flex flex-col items-center justify-center bg-slate-250 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+              title="Fortify Wall"
+            >
+              <span className="text-sm">🚧</span>
+              <span className="text-[6px] tracking-tighter">WALL</span>
+            </button>
             <button 
               onClick={() => setActiveModal({ side: 'red', type: 'teleport' })}
-              className="w-10 h-10 flex items-center justify-center bg-purple-600/20 hover:bg-purple-600/40 text-purple-400 border border-purple-500/20 rounded transition-all text-[7px] font-bold uppercase text-center p-1"
-            >Tele</button>
+              className="w-10 h-10 flex flex-col items-center justify-center bg-purple-200 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+              title="Teleport"
+            >
+              <span className="text-sm">🔮</span>
+              <span className="text-[6px] tracking-tighter">TELE</span>
+            </button>
             <button 
               onClick={() => setActiveModal({ side: 'red', type: 'grid' })}
-              className="w-10 h-10 flex items-center justify-center bg-red-900/40 hover:bg-red-800/60 text-red-100 border border-red-500/30 rounded transition-all text-[7px] font-bold uppercase text-center p-1"
-            >Grid</button>
+              className="w-10 h-10 flex flex-col items-center justify-center bg-blue-105 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+              title="Push Grid"
+            >
+              <span className="text-sm">♟️</span>
+              <span className="text-[6px] tracking-tighter">GRID</span>
+            </button>
             <button 
               onClick={() => setActiveModal({ side: 'red', type: 'move' })}
-              className="w-10 h-10 flex items-center justify-center bg-red-600/20 hover:bg-red-600/40 text-red-400 border border-red-500/20 rounded transition-all text-[7px] font-bold uppercase text-center p-1"
-            >Move</button>
+              className="w-10 h-10 flex flex-col items-center justify-center bg-[#ef4444] border-2 border-black rounded-lg text-white font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+              title="Move Pack"
+            >
+              <span className="text-sm">💥</span>
+              <span className="text-[6px] tracking-tighter">MOVE</span>
+            </button>
           </div>
-          <div className="flex flex-col items-end group cursor-pointer" onClick={() => setIsPurchaseModalOpen(true)}>
-            <span className="text-[10px] text-red-400 font-bold uppercase tracking-widest">Team Red</span>
-            <div className="flex items-center gap-2">
-              <button className="text-[8px] bg-white/10 text-white rounded px-1 group-hover:bg-red-600 transition-colors">BUY</button>
-              <span className="text-xs text-red-100/60 font-mono tracking-tighter">
-                {user ? `${profile?.currentTokens || 0} Tokens` : '$1,000 Global Base'}
+          
+          <div className="flex flex-col items-end group cursor-pointer bg-white border-2 border-black p-1.5 rounded-xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all" onClick={() => setIsPurchaseModalOpen(true)}>
+            <span className="text-[10px] text-red-600 font-black uppercase tracking-wider">❤️ Team Red</span>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <button className="text-[8px] bg-yellow-300 text-black border border-black font-black rounded px-1 transition-colors uppercase">REFILL</button>
+              <span className="text-[10px] text-black font-mono font-bold">
+                {user ? `${profile?.currentTokens || 0} Tokens` : '$1,000 Base'}
               </span>
             </div>
-            {sprintRed > Date.now() && <span className="text-[8px] text-red-300 animate-pulse">SPRINT ACTIVE</span>}
+            {sprintRed > Date.now() && <span className="text-[8px] text-red-600 font-black tracking-widest animate-pulse">⚡ SPRINT ACTIVE</span>}
           </div>
         </div>
-
       </div>
 
       {/* Movement Guides */}
       <div className="fixed top-8 left-8 flex flex-col gap-4 z-50">
-        <div className="flex flex-col gap-2 text-white/50 text-[10px] font-mono backdrop-blur-md bg-black/20 p-3 rounded-lg border border-white/10">
-          <p><span className="text-blue-400 font-bold">BLUE:</span> WASD</p>
-          <p><span className="text-red-400 font-bold">RED:</span> ARROWS</p>
+        <div className="flex flex-col gap-2 text-black text-[10px] font-mono bg-yellow-200 border-3 border-black p-4 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] font-bold">
+          <p className="uppercase font-black text-xs border-b border-black pb-1.5 mb-1 tracking-tight">🎮 CONTROLS</p>
+          <p><span className="text-blue-600 font-extrabold">BLUE TEAM:</span> W, A, S, D Keyboards</p>
+          <p><span className="text-red-600 font-extrabold">RED TEAM:</span> ARROW Keys</p>
         </div>
       </div>
 
       {/* Charity Counter */}
-      <div className="fixed top-8 right-8 z-50 flex flex-col items-end gap-2">
+      <div className="fixed top-8 right-8 z-50 flex flex-col items-end gap-3">
         <div className="flex items-center gap-4">
           {/* Profile / Login */}
-          <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-xl p-2 flex items-center gap-3 pr-4 shadow-[0_10px_30px_rgba(0,0,0,0.5)] pointer-events-auto">
+          <div className="bg-[#fcfaf4] border-3 border-black rounded-2xl p-2.5 flex items-center gap-3 pr-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] pointer-events-auto">
             {user ? (
               <>
-                <img src={user.photoURL || ""} alt={user.displayName || ""} className="w-8 h-8 rounded-lg border border-white/10" referrerPolicy="no-referrer" />
+                <img src={user.photoURL || ""} alt={user.displayName || ""} className="w-8 h-8 rounded-lg border-2 border-black" referrerPolicy="no-referrer" />
                 <div className="flex flex-col">
-                  <span className="text-[10px] text-white font-bold tracking-tight leading-none mb-0.5">{user.displayName}</span>
-                  <span className="text-[8px] text-emerald-400 font-mono uppercase tracking-widest">{profile?.currentTokens || 0} Tokens</span>
+                  <span className="text-[10px] text-black font-extrabold tracking-tight leading-none mb-0.5">{user.displayName}</span>
+                  <span className="text-[8px] bg-green-200 text-black border border-black font-black uppercase tracking-wider px-1 rounded-sm">{profile?.currentTokens || 0} Tokens</span>
                 </div>
-                <button onClick={handleLogout} className="ml-2 text-white/20 hover:text-white/40" title="Sign Out"><RotateCcw size={14}/></button>
+                <button onClick={handleLogout} className="ml-2 text-gray-500 hover:text-red-500 border border-transparent hover:border-black p-1 hover:bg-yellow-250 rounded transition-all cursor-pointer" title="Sign Out"><RotateCcw size={13}/></button>
               </>
             ) : (
               <button 
                 onClick={handleLogin}
-                className="px-4 py-2 bg-white text-black text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-emerald-400 transition-colors cursor-pointer"
+                className="px-4 py-2 bg-yellow-300 text-black text-[10px] font-black uppercase tracking-widest rounded-xl border-2 border-black hover:bg-yellow-400 transition-colors cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:translate-x-0.5 active:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]"
               >
                 Sign In
               </button>
@@ -1166,17 +1295,17 @@ export default function App() {
 
           <button 
             onClick={() => setIsLeaderboardOpen(true)}
-            className="backdrop-blur-md bg-emerald-950/20 p-4 rounded-xl border border-emerald-500/20 shadow-[0_0_20px_rgba(16,185,129,0.05)] text-right group hover:border-emerald-500/40 transition-all pointer-events-auto cursor-pointer"
+            className="bg-white border-3 border-black p-4 rounded-2xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] text-right group hover:-translate-y-0.5 active:translate-y-0.5 active:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all pointer-events-auto cursor-pointer"
           >
-            <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-[0.2em] group-hover:text-emerald-300">Total Money Raised</span>
-            <div className="flex items-baseline gap-1">
-               <span className="text-emerald-500/50 font-mono text-xs">$</span>
-               <span className="text-3xl font-black text-white italic tracking-tighter tabular-nums">
+            <span className="text-[10px] text-black/60 font-black uppercase tracking-wider group-hover:text-black font-sans">💖 Donated to Charity</span>
+            <div className="flex items-baseline gap-1 justify-end font-extrabold">
+               <span className="text-black/50 font-mono text-sm">$</span>
+               <span className="text-3xl font-black text-black italic tracking-tighter tabular-nums font-sans">
                  {totalRaised.toLocaleString()}
                </span>
             </div>
-            <div className="text-[8px] text-emerald-500/40 uppercase tracking-[0.2em] font-mono mt-1">
-               Click for Leaderboard
+            <div className="text-[8px] text-black/40 uppercase tracking-widest font-black mt-1">
+               Click for Hall of Fame &rarr;
             </div>
           </button>
         </div>
@@ -1215,76 +1344,197 @@ export default function App() {
 
       {/* Leaderboard Modal */}
       {isLeaderboardOpen && (
-        <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/80 backdrop-blur-md">
-          <div className="max-w-md w-full bg-[#111] border border-white/10 rounded-2xl overflow-hidden shadow-2xl">
-            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-emerald-950/20">
+        <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 text-black">
+          <motion.div 
+            initial={{ scale: 0.9, y: 15 }}
+            animate={{ scale: 1, y: 0 }}
+            className="max-w-md w-full bg-[#fdfdfc] border-4 border-black rounded-3xl overflow-hidden shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]"
+          >
+            <div className="p-6 border-b-4 border-black bg-yellow-300 flex justify-between items-center">
               <div>
-                <h2 className="text-2xl font-black text-white italic uppercase tracking-tighter">Big Donors</h2>
-                <p className="text-[10px] text-emerald-500/50 uppercase tracking-[0.2em] font-mono">Charity Hall of Fame</p>
+                <h2 className="text-3xl font-black text-black uppercase tracking-tight">Leaderboard</h2>
+                <p className="text-[9px] text-black font-black uppercase tracking-wider font-mono">Charity Hall of Fame</p>
               </div>
               <button 
                 onClick={() => setIsLeaderboardOpen(false)}
-                className="w-10 h-10 flex items-center justify-center rounded-full bg-white/5 text-white/50 hover:bg-white/10"
+                className="w-9 h-9 flex items-center justify-center rounded-lg border-2 border-black bg-rose-500 text-white font-black hover:bg-rose-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
               >✕</button>
             </div>
-            <div className="p-6 space-y-3 max-h-[60vh] overflow-y-auto">
+            <div className="p-6 space-y-3 max-h-[50vh] overflow-y-auto bg-white/50">
+              {leaderboard.length === 0 && (
+                <div className="text-center italic text-black/40 text-xs py-8">Be the first player to donate and top the ranks!</div>
+              )}
               {leaderboard.map((donor, i) => (
-                <div key={donor.id} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5">
+                <div key={donor.id} className="flex items-center justify-between p-3.5 rounded-xl bg-white border-2 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
                   <div className="flex items-center gap-3">
-                    <span className="text-xs font-mono text-white/20 w-4">{i + 1}</span>
-                    <span className="text-sm text-white font-medium">{donor.displayName}</span>
+                    <span className="text-xs font-black bg-yellow-105 text-black w-6 h-6 rounded-md flex items-center justify-center border border-black">{i + 1}</span>
+                    <span className="text-xs text-black font-black uppercase">{donor.displayName}</span>
                   </div>
-                  <div className="text-emerald-400 font-black italic">
-                    <span className="text-[10px] mr-1 opacity-50">$</span>
+                  <div className="text-black font-black text-sm italic bg-green-200 border border-black px-2.5 py-0.5 rounded-md flex items-center gap-0.5">
+                    <span className="text-[10px] mr-1 opacity-60">$</span>
                     {donor.totalDonated.toLocaleString()}
                   </div>
                 </div>
               ))}
             </div>
-            <div className="p-6 bg-white/5 text-[9px] text-white/30 text-center uppercase tracking-widest font-mono">
-              100% of proceeds go to humanitarian efforts
+            <div className="p-4 bg-yellow-101 border-t-3 border-black text-[9px] text-black/60 text-center uppercase tracking-wider font-black font-mono">
+              ★ 100% of proceeds go directly to humanitarian efforts ★
             </div>
-          </div>
+          </motion.div>
         </div>
       )}
 
       {/* Purchase Modal */}
       {isPurchaseModalOpen && (
-        <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/80 backdrop-blur-md">
-          <div className="max-w-sm w-full bg-[#111] border border-white/10 rounded-2xl overflow-hidden shadow-2xl p-8 text-center">
-            <h2 className="text-3xl font-black text-white italic uppercase tracking-tighter mb-2">Refill Tokens</h2>
-            <p className="text-[10px] text-white/40 uppercase tracking-[0.2em] font-mono mb-8">Each token is a $1 donation to charity</p>
-            
-            <div className="grid grid-cols-2 gap-4 mb-8">
-              {[10, 25, 50, 100].map(amount => (
-                <button 
-                  key={amount}
-                  onClick={() => buyTokens(amount)}
-                  className="p-6 rounded-xl bg-white/5 border border-white/10 hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all group"
-                >
-                  <div className="text-2xl font-black text-white mb-1 group-hover:scale-110 transition-transform">{amount}</div>
-                  <div className="text-[9px] text-emerald-500 font-bold uppercase tracking-widest">${amount}</div>
-                </button>
-              ))}
+        <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/70 backdrop-blur-sm overflow-y-auto p-4 text-black">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="max-w-4xl w-full bg-[#f0f0f0] border-4 border-black rounded-3xl p-6 sm:p-8 relative shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]"
+          >
+            {/* Header section closely matching pricing-container */}
+            <div className="text-center mb-10 relative z-10">
+              <div className="inline-block relative">
+                <h2 className="text-3xl sm:text-4xl font-black text-black bg-yellow-300 px-8 py-3 rounded-2xl border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] uppercase -skew-x-1">
+                  Refill Game Tokens
+                </h2>
+                <div className="h-1 bg-black rounded-full mt-4 w-full" />
+              </div>
+              <p className="text-[10px] text-black font-black uppercase tracking-widest mt-3 font-mono">
+                ⭐ Each token is a $1 direct contribution to humanitarian aid channels ⭐
+              </p>
             </div>
 
+            {/* Back effects inside the modal */}
+            <div className="absolute inset-0 pointer-events-none opacity-20">
+              <div className="absolute inset-0" style={{
+                backgroundImage: "linear-gradient(#00000010 1px, transparent 1px), linear-gradient(90deg, #00000010 1px, transparent 1px)",
+                backgroundSize: "20px 20px"
+              }} />
+            </div>
+
+            {/* Closing Button */}
             <button 
               onClick={() => setIsPurchaseModalOpen(false)}
-              className="text-white/20 hover:text-white/40 text-[10px] uppercase tracking-widest font-mono"
+              className="absolute top-4 right-4 w-10 h-10 border-3 border-black rounded-xl bg-rose-500 text-white font-black hover:bg-rose-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 transition-all text-sm flex items-center justify-center cursor-pointer"
             >
-              Maybe Later
+              ✕
             </button>
-          </div>
+
+            {/* Pricing / Packages Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative z-10">
+              {/* Starter Pack */}
+              <motion.div
+                whileHover={{ rotate: -1, scale: 1.02 }}
+                className="bg-white rounded-2xl p-6 border-3 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex justify-between items-start mb-4">
+                    <h3 className="text-xl font-black text-black">Starter Pack</h3>
+                    <span className="px-3 py-1 bg-rose-500 text-white font-black text-[9px] rounded-lg border-2 border-black uppercase">
+                      REFUEL
+                    </span>
+                  </div>
+                  <ul className="space-y-2 mb-6 text-black">
+                    {["10 Complete Tokens", "Paint Custom Walls", "Support Global Aid", "Standard Placement"].map((f, i) => (
+                      <li key={i} className="flex items-center gap-2 p-1.5 bg-gray-50 rounded-lg border-2 border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] text-[11px] font-bold">
+                        <span className="w-4 h-4 rounded-md bg-rose-500 text-white flex items-center justify-center text-[9px] border border-black">✓</span>
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <button 
+                  onClick={() => buyTokens(10)}
+                  className="w-full py-2.5 bg-rose-500 hover:bg-rose-600 text-white font-black text-xs border-3 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer rounded-xl uppercase"
+                >
+                  Get 10 Tokens for $10 &rarr;
+                </button>
+              </motion.div>
+
+              {/* Pro / Tactician Pack */}
+              <motion.div
+                whileHover={{ rotate: 1, scale: 1.03 }}
+                className="bg-white rounded-2xl p-6 border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col justify-between relative"
+              >
+                {/* Popular band */}
+                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 bg-yellow-300 text-black border-2 border-black rounded-lg text-[9px] font-black uppercase tracking-widest shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                  ⚡ POPULAR CHOICE
+                </div>
+
+                <div className="mt-2">
+                  <div className="flex justify-between items-start mb-4">
+                    <h3 className="text-xl font-black text-black">Tactician</h3>
+                    <span className="px-3 py-1 bg-blue-500 text-white font-black text-[9px] rounded-lg border-2 border-black uppercase">
+                      BEST VALUE
+                    </span>
+                  </div>
+                  <ul className="space-y-2 mb-6 text-black">
+                    {["25 Complete Tokens", "Scan Enemy Mines", "Speed run Sprinting", "Leaderboard Showcase", "100% Humanitarian Aid"].map((f, i) => (
+                      <li key={i} className="flex items-center gap-2 p-1.5 bg-blue-50 rounded-lg border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-[11px] font-bold">
+                        <span className="w-4 h-4 rounded-md bg-blue-500 text-white flex items-center justify-center text-[9px] border border-black">✓</span>
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <button 
+                  onClick={() => buyTokens(25)}
+                  className="w-full py-2.5 bg-blue-500 hover:bg-blue-600 text-white font-black text-xs border-3 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer rounded-xl uppercase"
+                >
+                  Get 25 Tokens for $25 &rarr;
+                </button>
+              </motion.div>
+
+              {/* Enterprise / Tycoon Pack */}
+              <motion.div
+                whileHover={{ rotate: -1, scale: 1.02 }}
+                className="bg-white rounded-2xl p-6 border-3 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex justify-between items-start mb-4">
+                    <h3 className="text-xl font-black text-black">Tycoon Pack</h3>
+                    <span className="px-3 py-1 bg-purple-500 text-white font-black text-[9px] rounded-lg border-2 border-black uppercase">
+                      SUPREME
+                    </span>
+                  </div>
+                  <ul className="space-y-2 mb-6 text-black">
+                    {["100 Massive Tokens", "Infinite Map Influence", "Humanitarian Aid Hall candidate", "24/7 Strategic Respect"].map((f, i) => (
+                      <li key={i} className="flex items-center gap-2 p-1.5 bg-purple-50 rounded-lg border-2 border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] text-[11px] font-bold">
+                        <span className="w-4 h-4 rounded-md bg-purple-500 text-white flex items-center justify-center text-[9px] border border-black">✓</span>
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <button 
+                  onClick={() => buyTokens(100)}
+                  className="w-full py-2.5 bg-purple-500 hover:bg-purple-600 text-white font-black text-xs border-3 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer rounded-xl uppercase"
+                >
+                  Get 100 Tokens for $100 &rarr;
+                </button>
+              </motion.div>
+            </div>
+
+            <div className="text-center mt-8">
+              <button 
+                onClick={() => setIsPurchaseModalOpen(false)}
+                className="text-black/50 hover:text-black font-black text-[10px] uppercase tracking-wider underline cursor-pointer"
+              >
+                Maybe Later, Let's Watch
+              </button>
+            </div>
+          </motion.div>
         </div>
       )}
 
       <div 
         ref={gridRef}
-        className="relative flex-none origin-top-left"
+        className="relative flex-none origin-top-left bg-[#fffdfa] border-4 border-black rounded-3xl shadow-[12px_12px_0px_0px_#000]"
         style={{ 
           width: `${size * 4}px`,
           height: `${size * 4}px`,
-          backgroundImage: 'linear-gradient(to right, #222 1px, transparent 1px), linear-gradient(to bottom, #222 1px, transparent 1px)',
+          backgroundImage: 'linear-gradient(to right, rgba(0,0,0,0.06) 1px, transparent 1px), linear-gradient(to bottom, rgba(0,0,0,0.06) 1px, transparent 1px)',
           backgroundSize: '4px 4px'
         }}
         onClick={handleGridClick}
