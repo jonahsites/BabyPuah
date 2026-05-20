@@ -86,6 +86,8 @@ export default function App() {
       console.error("Login failed", err);
       if (err.code === "auth/unauthorized-domain") {
         setLoginError(`Domain Unauthorized: "${window.location.hostname}" is not authorized on your Firebase console settings. Please add it to Authorized Domains.`);
+      } else if (err.code === "auth/operation-not-allowed") {
+        setLoginError('Google Sign-In is disabled in your Firebase console. Please go to Build > Authentication > Sign-in method tab, click "Add new provider", and enable "Google".');
       } else if (err.code === "auth/popup-blocked") {
         setLoginError("Popup was blocked by your browser. Please allow popups or open in a new tab.");
       } else if (err.code === "auth/popup-closed-by-user") {
@@ -120,11 +122,19 @@ export default function App() {
 
   // Sync Auth and User Profile
   useEffect(() => {
+    let unsubUser: (() => void) | null = null;
+
     const unsubAuth = onAuthStateChanged(auth, async (u) => {
+      // Clean up previous listener if any
+      if (unsubUser) {
+        unsubUser();
+        unsubUser = null;
+      }
+
       setUser(u);
       if (u) {
         const userRef = doc(db, "users", u.uid);
-        const unsubUser = onSnapshot(userRef, (snap) => {
+        unsubUser = onSnapshot(userRef, (snap) => {
           if (snap.exists()) {
             setProfile(snap.data() as any);
           } else {
@@ -139,14 +149,27 @@ export default function App() {
             setDoc(userRef, newProfile);
             setProfile(newProfile as any);
           }
+        }, (err: any) => {
+          console.error("Error subscribing to user profile:", err);
+          handleFirestoreError(err, 'listen', `users/${u.uid}`);
+          
+          if (err.code === "permission-denied") {
+            setLoginError(`Firestore Permission Denied on user profile. Please deploy your "firestore.rules" file to your Firebase console.`);
+          } else {
+            setLoginError(`Profile loading error: ${err.message || err.code}`);
+          }
         });
-        return () => unsubUser();
       } else {
         setProfile(null);
       }
     });
 
-    return () => unsubAuth();
+    return () => {
+      unsubAuth();
+      if (unsubUser) {
+        unsubUser();
+      }
+    };
   }, []);
 
   // Sync Leaderboard
