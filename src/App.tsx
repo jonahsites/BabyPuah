@@ -595,10 +595,18 @@ export default function App() {
       updates.bluePos = nextPos;
       updates.blueRot = nextRot;
       updates.blueTrail = finalTrail;
+      // Optimistic local state update to render instantly
+      setBluePos(nextPos);
+      setBlueRot(nextRot);
+      setBlueTrail(finalTrail);
     } else {
       updates.redPos = nextPos;
       updates.redRot = nextRot;
       updates.redTrail = finalTrail;
+      // Optimistic local state update to render instantly
+      setRedPos(nextPos);
+      setRedRot(nextRot);
+      setRedTrail(finalTrail);
     }
     
     await updateFirebase(updates);
@@ -699,9 +707,15 @@ export default function App() {
     if (side === 'blue') {
       update.bluePos = { x: nx, y: ny };
       update.blueTrail = finalTrail;
+      // Optimistic local state update to render instantly
+      setBluePos({ x: nx, y: ny });
+      setBlueTrail(finalTrail);
     } else {
       update.redPos = { x: nx, y: ny };
       update.redTrail = finalTrail;
+      // Optimistic local state update to render instantly
+      setRedPos({ x: nx, y: ny });
+      setRedTrail(finalTrail);
     }
     
     addLog(`${side === 'blue' ? 'Blue' : 'Red'} teleported to ${nx}, ${ny}`);
