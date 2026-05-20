@@ -289,22 +289,19 @@ export default function App() {
     const unsubscribe = onSnapshot(gameRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
-        // Only update local state if the change came from another client
-        if (!snapshot.metadata.hasPendingWrites) {
-          setBluePos(data.bluePos);
-          setRedPos(data.redPos);
-          setBlueRot(data.blueRot);
-          setRedRot(data.redRot);
-          setTotalRaised(data.totalRaised || 0);
-          setBlueTrail(data.blueTrail || []);
-          setRedTrail(data.redTrail || []);
-          setWalls(data.walls || []);
-          setMines(data.mines || []);
-          setMinesRevealed(data.minesRevealed || false);
-          setLogs(data.logs || []);
-          setSprintBlue(data.sprintBlue || 0);
-          setSprintRed(data.sprintRed || 0);
-        }
+        setBluePos(data.bluePos);
+        setRedPos(data.redPos);
+        setBlueRot(data.blueRot);
+        setRedRot(data.redRot);
+        setTotalRaised(data.totalRaised || 0);
+        setBlueTrail(data.blueTrail || []);
+        setRedTrail(data.redTrail || []);
+        setWalls(data.walls || []);
+        setMines(data.mines || []);
+        setMinesRevealed(data.minesRevealed || false);
+        setLogs(data.logs || []);
+        setSprintBlue(data.sprintBlue || 0);
+        setSprintRed(data.sprintRed || 0);
       }
     }, (error) => {
       handleFirestoreError(error, 'listen', `games/${GAME_ID}`);
