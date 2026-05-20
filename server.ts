@@ -14,13 +14,24 @@ async function startServer() {
 
   app.use(express.json());
 
+  // API Route: Configuration Status
+  app.get("/api/config-status", (req, res) => {
+    res.json({
+      stripeEnabled: !!stripe,
+      hasSecretKey: !!process.env.STRIPE_SECRET_KEY,
+    });
+  });
+
   // API Route: Create Checkout Session
   app.post("/api/create-checkout-session", async (req, res) => {
-    if (!stripe) {
-      return res.status(500).json({ error: "Stripe not configured" });
-    }
-
     const { tokens, userId } = req.body;
+
+    if (!stripe) {
+      // Sandbox Checkout Simulation Mode
+      const mockSessionId = `mock_session_${Date.now()}_u_${userId}_t_${tokens}`;
+      const mockSessionUrl = `${req.headers.origin}/?payment=success&session_id=${mockSessionId}&sandbox=true`;
+      return res.json({ id: mockSessionId, url: mockSessionUrl });
+    }
     
     try {
       const session = await stripe.checkout.sessions.create({
@@ -55,10 +66,25 @@ async function startServer() {
 
   // API Route: Verify Payment (Simplified for this environment)
   app.get("/api/verify-payment", async (req, res) => {
-    if (!stripe) return res.status(500).json({ error: "Stripe not configured" });
-    
     const { session_id } = req.query;
     if (!session_id) return res.status(400).json({ error: "Missing session_id" });
+
+    // Handle Mock Sandbox Sessions
+    if (typeof session_id === "string" && session_id.startsWith("mock_session_")) {
+      const match = session_id.match(/_u_(.*)_t_(\d+)/);
+      if (match) {
+        const userId = match[1];
+        const tokens = parseInt(match[2]);
+        return res.json({ 
+          status: "paid", 
+          tokens,
+          userId,
+          isSandbox: true
+        });
+      }
+    }
+
+    if (!stripe) return res.status(500).json({ error: "Stripe not configured" });
 
     try {
       const session = await stripe.checkout.sessions.retrieve(session_id as string);

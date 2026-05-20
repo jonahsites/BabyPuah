@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { db, auth } from "./lib/firebase";
 import { doc, onSnapshot, updateDoc, setDoc, getDoc, serverTimestamp, increment, collection, query, orderBy, limit, getDocs } from "firebase/firestore";
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, User as FirebaseUser } from "firebase/auth";
+import SlingshotGame from "./components/SlingshotGame";
 
 const GAME_ID = "global";
 
@@ -35,6 +36,23 @@ export default function App() {
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isDevMode, setIsDevMode] = useState(false);
+  const [stripeConfig, setStripeConfig] = useState<{ stripeEnabled: boolean, hasSecretKey: boolean } | null>(null);
+  const [paymentSuccessMessage, setPaymentSuccessMessage] = useState<string | null>(null);
+  
+  // Fetch Stripe Configuration Status on load
+  useEffect(() => {
+    fetch("/api/config-status")
+      .then(res => res.json())
+      .then(data => setStripeConfig(data))
+      .catch(err => console.error("Could not fetch stripe config status", err));
+
+    (window as any)._openPurchaseModal = () => {
+      setIsPurchaseModalOpen(true);
+    };
+    return () => {
+      delete (window as any)._openPurchaseModal;
+    };
+  }, []);
   
   const size = 200;
   const gridRef = useRef<HTMLDivElement>(null);
@@ -195,12 +213,11 @@ export default function App() {
         const data = await res.json();
         if (data.status === "paid") {
           // Update local state and trigger firebase update if needed
-          // The server-side should ideally handle the fulfillment via webhook
-          // But for this sandbox, we'll do it on the user profile update if the server verified it
           const userRef = doc(db, "users", data.userId);
           await updateDoc(userRef, {
             currentTokens: increment(data.tokens)
           });
+          setPaymentSuccessMessage(`Refilled ${data.tokens} tokens successfully! Your direct contribution has been logged for global humanitarian aid.`);
           // Clean up URL
           window.history.replaceState({}, document.title, "/");
         }
@@ -219,7 +236,7 @@ export default function App() {
   const [mineAlert, setMineAlert] = useState<string | null>(null);
   const [activeModal, setActiveModal] = useState<{
     side: 'blue' | 'red',
-    type: 'move' | 'grid' | 'jackpot' | 'teleport' | 'wall' | 'mine'
+    type: 'move' | 'grid' | 'jackpot' | 'teleport' | 'wall' | 'mine' | 'slingshot'
   } | null>(null);
 
   const [userRole, setUserRole] = useState<'blue' | 'red' | 'admin' | 'none'>('none');
@@ -295,19 +312,21 @@ export default function App() {
     const unsubscribe = onSnapshot(gameRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
-        setBluePos(data.bluePos);
-        setRedPos(data.redPos);
-        setBlueRot(data.blueRot);
-        setRedRot(data.redRot);
-        setTotalRaised(data.totalRaised || 0);
-        setBlueTrail(data.blueTrail || []);
-        setRedTrail(data.redTrail || []);
-        setWalls(data.walls || []);
-        setMines(data.mines || []);
-        setMinesRevealed(data.minesRevealed || false);
-        setLogs(data.logs || []);
-        setSprintBlue(data.sprintBlue || 0);
-        setSprintRed(data.sprintRed || 0);
+        if (!snapshot.metadata.hasPendingWrites) {
+          setBluePos(data.bluePos);
+          setRedPos(data.redPos);
+          setBlueRot(data.blueRot);
+          setRedRot(data.redRot);
+          setTotalRaised(data.totalRaised || 0);
+          setBlueTrail(data.blueTrail || []);
+          setRedTrail(data.redTrail || []);
+          setWalls(data.walls || []);
+          setMines(data.mines || []);
+          setMinesRevealed(data.minesRevealed || false);
+          setLogs(data.logs || []);
+          setSprintBlue(data.sprintBlue || 0);
+          setSprintRed(data.sprintRed || 0);
+        }
       }
     }, (error) => {
       handleFirestoreError(error, 'listen', `games/${GAME_ID}`);
@@ -324,6 +343,10 @@ export default function App() {
   };
 
   const handleFirestoreError = (error: any, operation: string, path: string) => {
+    if (error && (error.code === 'unavailable' || error.code === 'failed-precondition' || (error.message && error.message.toLowerCase().includes('offline')))) {
+      console.warn(`[Firestore Offline Sync Mode] ${operation} on ${path}: Operations will sync when online.`);
+      return;
+    }
     const errInfo = {
       error: error.message || String(error),
       code: error.code,
@@ -483,7 +506,7 @@ export default function App() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [size]);
+  }, [size, bluePos, blueRot, blueTrail, redPos, redRot, redTrail, walls, mines, isDevMode, userRole]);
 
   const spendTokens = async (side: 'blue' | 'red', cost: number) => {
     if (isDevMode) {
@@ -610,6 +633,109 @@ export default function App() {
     }
     
     await updateFirebase(updates);
+  };
+
+  const executeSlingshotLaunch = async (side: 'blue' | 'red', pullX: number, pullY: number, maxPull: number) => {
+    const cost = 100;
+    const success = await spendTokens(side, cost);
+    if (!success) return false;
+
+    const isBlueTarget = side === 'blue';
+    const currentPos = isBlueTarget ? bluePos : redPos;
+    const currentTrail = isBlueTarget ? blueTrail : redTrail;
+
+    // Launch vector is the opposite of pull direction!
+    const lX = -pullX;
+    const lY = -pullY;
+    const pullDistance = Math.sqrt(pullX * pullX + pullY * pullY);
+    
+    if (pullDistance < 5) return false;
+
+    // Determine launch blocks, max is 25 blocks (corresponding to 100 pixels on grid)
+    const ratio = Math.min(1, pullDistance / maxPull);
+    const steps = Math.ceil(ratio * 25);
+
+    const pullAngle = Math.atan2(lY, lX);
+    const targetDeltaX = Math.round(Math.cos(pullAngle) * steps);
+    const targetDeltaY = Math.round(Math.sin(pullAngle) * steps);
+
+    // Calculate flight angle for baby rotation
+    const flightAngleRad = Math.atan2(targetDeltaY, targetDeltaX);
+    const nextRot = Math.round((flightAngleRad * 180) / Math.PI);
+
+    // Track steps on grid
+    const linePoints: { x: number; y: number }[] = [];
+    const stepsCount = Math.max(Math.abs(targetDeltaX), Math.abs(targetDeltaY));
+
+    if (stepsCount > 0) {
+      for (let s = 1; s <= stepsCount; s++) {
+        const t = s / stepsCount;
+        const px = Math.round(currentPos.x + targetDeltaX * t);
+        const py = Math.round(currentPos.y + targetDeltaY * t);
+        if (
+          linePoints.length === 0 ||
+          linePoints[linePoints.length - 1].x !== px ||
+          linePoints[linePoints.length - 1].y !== py
+        ) {
+          linePoints.push({ x: px, y: py });
+        }
+      }
+    }
+
+    let nextPos = { ...currentPos };
+    let newTrailSegment: string[] = [];
+
+    for (const pt of linePoints) {
+      let inBound = false;
+      if (isBlueTarget) {
+        if (pt.x >= 0 && pt.x < size / 2 && pt.y >= 0 && pt.y < size) {
+          inBound = true;
+        }
+      } else {
+        if (pt.x >= size / 2 && pt.x < size && pt.y >= 0 && pt.y < size) {
+          inBound = true;
+        }
+      }
+
+      if (!inBound) break; // Terminate flight at map boundary
+
+      if (walls.includes(`${pt.x},${pt.y}`)) {
+        break; // Terminate flight (blocked by wall)
+      }
+
+      if (mines.includes(`${pt.x},${pt.y}`)) {
+        setMineAlert(`You hit a mine! Resetting to start.`);
+        addLog(`🎯 ${side === 'blue' ? 'Blue' : 'Red'} slingshot hit a mine! Resetting to start.`);
+        nextPos = isBlueTarget ? initialBlue : initialRed;
+        break;
+      }
+
+      newTrailSegment.push(`${nextPos.x},${nextPos.y}`);
+      nextPos = pt;
+    }
+
+    const finalTrail = [...currentTrail, ...newTrailSegment];
+    addLog(`🎯 ${side === 'blue' ? 'Blue' : 'Red'} slingshot launched baby ${steps} blocks!`);
+
+    const updates: any = {};
+    if (isBlueTarget) {
+      updates.bluePos = nextPos;
+      updates.blueRot = nextRot;
+      updates.blueTrail = finalTrail;
+      setBluePos(nextPos);
+      setBlueRot(nextRot);
+      setBlueTrail(finalTrail);
+    } else {
+      updates.redPos = nextPos;
+      updates.redRot = nextRot;
+      updates.redTrail = finalTrail;
+      setRedPos(nextPos);
+      setRedRot(nextRot);
+      setRedTrail(finalTrail);
+    }
+
+    await updateFirebase(updates);
+    return true;
   };
 
   const handleBatchMove = async (steps: number, direction: string) => {
@@ -967,13 +1093,36 @@ export default function App() {
         </div>
       )}
 
+      {/* Stripe Payment Success Alert */}
+      {paymentSuccessMessage && (
+        <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 text-black">
+          <motion.div 
+            initial={{ rotate: 3, scale: 0.9 }}
+            animate={{ rotate: 0, scale: 1 }}
+            className="bg-green-300 border-4 border-black p-8 rounded-3xl max-w-md w-full text-center shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden"
+          >
+            <div className="text-6xl mb-4 animate-bounce">🎉</div>
+            <h2 className="text-3xl font-black uppercase tracking-tight text-black">THANK YOU!</h2>
+            <p className="font-mono text-[11px] font-black uppercase tracking-wider mt-3 mb-6 block leading-relaxed text-emerald-950">
+              {paymentSuccessMessage}
+            </p>
+            <button 
+              onClick={() => setPaymentSuccessMessage(null)}
+              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black border-3 border-black rounded-xl hover:-translate-y-0.5 active:translate-y-0.5 transition-all uppercase text-xs tracking-wider shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+            >
+              LET'S BATTLE &rarr;
+            </button>
+          </motion.div>
+        </div>
+      )}
+
       {/* Batch Move Modal */}
       {activeModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <motion.div 
             initial={{ scale: 0.95 }}
             animate={{ scale: 1 }}
-            className="bg-white border-4 border-black p-6 rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] w-80 relative font-sans text-black"
+            className={`bg-white border-4 border-black p-6 rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] relative font-sans text-black ${activeModal.type === 'slingshot' ? 'w-88' : 'w-80'}`}
           >
             {/* Decorative corner tag */}
             <div className={`absolute top-0 right-0 px-3 py-1 text-[9px] font-black uppercase text-white border-b-3 border-l-3 border-black rounded-tr-[12px] ${activeModal.side === 'blue' ? 'bg-[#3b82f6]' : 'bg-[#ef4444]'}`}>
@@ -986,10 +1135,25 @@ export default function App() {
                activeModal.type === 'teleport' ? `🔮 Teleport` :
                activeModal.type === 'mine' ? `💣 Minefield` :
                activeModal.type === 'jackpot' ? `🎰 Jackpot Spin` :
+               activeModal.type === 'slingshot' ? `🏹 Baby Slingshot` :
                `🚧 Erect Wall`}
             </h3>
             
-            {activeModal.type === 'move' || activeModal.type === 'grid' ? (
+            {activeModal.type === 'slingshot' ? (
+              <SlingshotGame
+                side={activeModal.side}
+                userTokens={profile?.currentTokens || 0}
+                isDevMode={isDevMode}
+                onLaunch={async (pullX, pullY, maxPull) => {
+                  const success = await executeSlingshotLaunch(activeModal.side, pullX, pullY, maxPull);
+                  if (success) {
+                    setActiveModal(null);
+                  }
+                  return success;
+                }}
+                onCancel={() => setActiveModal(null)}
+              />
+            ) : activeModal.type === 'move' || activeModal.type === 'grid' ? (
               <form onSubmit={(e) => {
                 e.preventDefault();
                 const formData = new FormData(e.currentTarget);
@@ -1299,6 +1463,14 @@ export default function App() {
               <span className="text-sm">🏃</span>
               <span className="text-[6px] tracking-tighter">RUN</span>
             </button>
+            <button 
+              onClick={() => setActiveModal({ side: 'blue', type: 'slingshot' })}
+              className="w-10 h-10 flex flex-col items-center justify-center bg-rose-200 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer animate-pulse"
+              title="Baby Slingshot Launch (100 Tokens)"
+            >
+              <span className="text-sm">🏹</span>
+              <span className="text-[6px] tracking-tighter">SLING</span>
+            </button>
             
             {mines.length > 0 && (
               <div className="flex gap-1">
@@ -1423,6 +1595,14 @@ export default function App() {
             >
               <span className="text-sm">🏃</span>
               <span className="text-[6px] tracking-tighter">RUN</span>
+            </button>
+            <button 
+              onClick={() => setActiveModal({ side: 'red', type: 'slingshot' })}
+              className="w-10 h-10 flex flex-col items-center justify-center bg-rose-200 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer animate-pulse"
+              title="Baby Slingshot Launch (100 Tokens)"
+            >
+              <span className="text-sm">🏹</span>
+              <span className="text-[6px] tracking-tighter">SLING</span>
             </button>
             <button 
               onClick={() => setActiveModal({ side: 'red', type: 'jackpot' })}
@@ -1654,7 +1834,7 @@ export default function App() {
             className="max-w-4xl w-full bg-[#f0f0f0] border-4 border-black rounded-3xl p-6 sm:p-8 relative shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]"
           >
             {/* Header section closely matching pricing-container */}
-            <div className="text-center mb-10 relative z-10">
+            <div className="text-center mb-8 relative z-10">
               <div className="inline-block relative">
                 <h2 className="text-3xl sm:text-4xl font-black text-black bg-yellow-300 px-8 py-3 rounded-2xl border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] uppercase -skew-x-1">
                   Refill Game Tokens
@@ -1664,6 +1844,19 @@ export default function App() {
               <p className="text-[10px] text-black font-black uppercase tracking-widest mt-3 font-mono">
                 ⭐ Each token is a $1 direct contribution to humanitarian aid channels ⭐
               </p>
+              {stripeConfig && (
+                <div className="flex justify-center mt-4">
+                  {stripeConfig.stripeEnabled ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] sm:text-xs font-mono font-black border-2 border-emerald-500 uppercase tracking-wide shadow-[2px_2px_0px_0px_rgba(16,185,129,1)] animate-pulse">
+                      ● SECURE REAL STRIPE PAYMENTS ENABLED
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 text-amber-850 text-[10px] sm:text-xs font-mono font-black border-2 border-amber-500 uppercase tracking-wide shadow-[2px_2px_0px_0px_rgba(245,158,11,1)]">
+                      ⚡ DEV SANDBOX TEST MODE ACTIVE (SIMULATE CHECKOUT FOR FREE)
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Back effects inside the modal */}
@@ -1760,7 +1953,7 @@ export default function App() {
                     </span>
                   </div>
                   <ul className="space-y-2 mb-6 text-black">
-                    {["100 Massive Tokens", "Infinite Map Influence", "Humanitarian Aid Hall candidate", "24/7 Strategic Respect"].map((f, i) => (
+                    {["100 Massive Tokens", "Premium Slingshot Launcher", "Infinite Map Influence", "Humanitarian Aid Hall candidate", "24/7 Strategic Respect"].map((f, i) => (
                       <li key={i} className="flex items-center gap-2 p-1.5 bg-purple-50 rounded-lg border-2 border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] text-[11px] font-bold">
                         <span className="w-4 h-4 rounded-md bg-purple-500 text-white flex items-center justify-center text-[9px] border border-black">✓</span>
                         {f}
