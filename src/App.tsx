@@ -34,6 +34,7 @@ export default function App() {
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [isDevMode, setIsDevMode] = useState(false);
   
   const size = 200;
   const gridRef = useRef<HTMLDivElement>(null);
@@ -242,6 +243,7 @@ export default function App() {
   const [isInitializing, setIsInitializing] = useState(true);
 
   const canControl = (side: 'blue' | 'red') => {
+    if (isDevMode) return true;
     if (userRole === 'admin') return true;
     return userRole === side;
   };
@@ -279,8 +281,12 @@ export default function App() {
             updatedAt: serverTimestamp()
           });
         }
-      } catch (e) {
-        handleFirestoreError(e, 'initialize', `games/${GAME_ID}`);
+      } catch (e: any) {
+        if (e && (e.code === 'unavailable' || (e.message && e.message.includes('offline')))) {
+          console.warn("Firestore is running offline or connection not established yet. Transitioning to offline/cache mode.");
+        } else {
+          handleFirestoreError(e, 'initialize', `games/${GAME_ID}`);
+        }
       }
       setIsInitializing(false);
     };
@@ -480,6 +486,10 @@ export default function App() {
   }, [size]);
 
   const spendTokens = async (side: 'blue' | 'red', cost: number) => {
+    if (isDevMode) {
+      addLog(`[DEV MODE] Bypassed spending ${cost} tokens for ${side} team`);
+      return true;
+    }
     if (!user || !profile) {
       addLog("You must be logged in to spend tokens!");
       return false;
@@ -1463,13 +1473,24 @@ export default function App() {
         </div>
       </div>
 
-      {/* Movement Guides */}
-      <div className="fixed top-8 left-8 flex flex-col gap-4 z-50">
+      {/* Movement Guides & Dev Mode Toggle */}
+      <div className="fixed top-8 left-8 flex flex-col gap-3 z-50">
         <div className="flex flex-col gap-2 text-black text-[10px] font-mono bg-yellow-200 border-3 border-black p-4 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] font-bold">
           <p className="uppercase font-black text-xs border-b border-black pb-1.5 mb-1 tracking-tight">🎮 CONTROLS</p>
           <p><span className="text-blue-600 font-extrabold">BLUE TEAM:</span> W, A, S, D Keyboards</p>
           <p><span className="text-red-600 font-extrabold">RED TEAM:</span> ARROW Keys</p>
         </div>
+        
+        <button
+          onClick={() => setIsDevMode(prev => !prev)}
+          className={`w-full px-4 py-2.5 border-3 border-black text-black text-[9px] font-black uppercase tracking-wider rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:translate-x-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+            isDevMode 
+              ? 'bg-rose-400 text-black animate-pulse font-mono' 
+              : 'bg-white text-black hover:bg-gray-100 font-mono'
+          }`}
+        >
+          {isDevMode ? "⚡ DEV MODE MATCH (ON)" : "⚙️ ENABLE TESTING DEV MODE"}
+        </button>
       </div>
 
       {/* Charity Counter */}
