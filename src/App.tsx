@@ -1002,15 +1002,11 @@ export default function App() {
           <div className="flex gap-2">
             <button 
               onClick={() => setActiveModal({ side: 'blue', type: 'move' })}
-              className="w-10 h-10 flex items-center justify-center bg-[#3b82f6] border-2 border-black rounded-lg transition-all hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] overflow-hidden group p-0 cursor-pointer"
+              className="w-10 h-10 flex flex-col items-center justify-center bg-[#3b82f6] border-2 border-black rounded-lg text-white font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
               title="Move"
             >
-              <img 
-                src="https://lh3.googleusercontent.com/d/1TvYWWub6eSmW6A6tU4qsyNOGc-w6AU2S" 
-                alt="Move" 
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform" 
-                referrerPolicy="no-referrer"
-              />
+              <span className="text-sm">💥</span>
+              <span className="text-[6px] tracking-tighter">MOVE</span>
             </button>
             <button 
               onClick={() => setActiveModal({ side: 'blue', type: 'grid' })}
@@ -1030,39 +1026,27 @@ export default function App() {
             </button>
             <button 
               onClick={() => setActiveModal({ side: 'blue', type: 'wall' })}
-              className="w-10 h-10 flex items-center justify-center bg-slate-200 border-2 border-black rounded-lg transition-all hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] overflow-hidden group p-0 cursor-pointer"
+              className="w-10 h-10 flex flex-col items-center justify-center bg-slate-200 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
               title="Wall"
             >
-              <img 
-                src="https://lh3.googleusercontent.com/d/1rBi5p3nph5wzTIc10Jw37rOlxuy73i3B" 
-                alt="Wall" 
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform" 
-                referrerPolicy="no-referrer"
-              />
+              <span className="text-sm">🚧</span>
+              <span className="text-[6px] tracking-tighter">WALL</span>
             </button>
             <button 
               onClick={() => setActiveModal({ side: 'blue', type: 'mine' })}
-              className="w-10 h-10 flex items-center justify-center bg-orange-200 border-2 border-black rounded-lg transition-all hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] overflow-hidden group p-0 cursor-pointer"
+              className="w-10 h-10 flex flex-col items-center justify-center bg-orange-200 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
               title="Mine"
             >
-              <img 
-                src="https://lh3.googleusercontent.com/d/1AeiB3J6kixiXb6MYcCRQWT_XCtJhhLpT" 
-                alt="Mine" 
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform" 
-                referrerPolicy="no-referrer"
-              />
+              <span className="text-sm">💣</span>
+              <span className="text-[6px] tracking-tighter">MINE</span>
             </button>
             <button 
               onClick={() => setActiveModal({ side: 'blue', type: 'jackpot' })}
-              className="w-10 h-10 flex items-center justify-center bg-yellow-200 border-2 border-black rounded-lg transition-all hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)] overflow-hidden group p-0 cursor-pointer"
+              className="w-10 h-10 flex flex-col items-center justify-center bg-yellow-200 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
               title="Luck"
             >
-              <img 
-                src="https://lh3.googleusercontent.com/d/1MXcNd2BDfT_nNMukm-4PeNPWtokkBiUt" 
-                alt="Luck" 
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform" 
-                referrerPolicy="no-referrer"
-              />
+              <span className="text-sm">🎰</span>
+              <span className="text-[6px] tracking-tighter">LUCK</span>
             </button>
             <button 
               onClick={() => handleSprint('blue')}
