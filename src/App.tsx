@@ -17,6 +17,7 @@ export default function App() {
   const [leaderboard, setLeaderboard] = useState<{ id: string, displayName: string, totalDonated: number }[]>([]);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
   
   const size = 200;
   const gridRef = useRef<HTMLDivElement>(null);
@@ -32,15 +33,28 @@ export default function App() {
 
   // Login logic
   const handleLogin = async () => {
+    setLoginError(null);
     const provider = new GoogleAuthProvider();
     try {
       await signInWithPopup(auth, provider);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Login failed", err);
+      if (err.code === "auth/unauthorized-domain") {
+        setLoginError(`Domain Unauthorized: please add "${window.location.hostname}" to your Firebase project settings.`);
+      } else if (err.code === "auth/popup-blocked") {
+        setLoginError("Popup was blocked by your browser. Please allow popups or open in a new tab.");
+      } else if (err.code === "auth/popup-closed-by-user") {
+        setLoginError("Popup closed by user before sign in was completed.");
+      } else {
+        setLoginError(err.message || String(err));
+      }
     }
   };
 
-  const handleLogout = () => signOut(auth);
+  const handleLogout = () => {
+    setLoginError(null);
+    signOut(auth);
+  };
 
   const buyTokens = async (amount: number) => {
     if (!user) return;
@@ -1127,43 +1141,76 @@ export default function App() {
       </div>
 
       {/* Charity Counter */}
-      <div className="fixed top-8 right-8 z-50 flex items-center gap-4">
-        {/* Profile / Login */}
-        <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-xl p-2 flex items-center gap-3 pr-4 shadow-xl pointer-events-auto">
-          {user ? (
-            <>
-              <img src={user.photoURL || ""} alt={user.displayName || ""} className="w-8 h-8 rounded-lg border border-white/10" referrerPolicy="no-referrer" />
-              <div className="flex flex-col">
-                <span className="text-[10px] text-white font-bold tracking-tight leading-none mb-0.5">{user.displayName}</span>
-                <span className="text-[8px] text-emerald-400 font-mono uppercase tracking-widest">{profile?.currentTokens || 0} Tokens</span>
-              </div>
-              <button onClick={handleLogout} className="ml-2 text-white/20 hover:text-white/40"><RotateCcw size={14}/></button>
-            </>
-          ) : (
-            <button 
-              onClick={handleLogin}
-              className="px-4 py-2 bg-white text-black text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-emerald-400 transition-colors"
-            >
-              Sign In
-            </button>
-          )}
+      <div className="fixed top-8 right-8 z-50 flex flex-col items-end gap-2">
+        <div className="flex items-center gap-4">
+          {/* Profile / Login */}
+          <div className="backdrop-blur-md bg-white/5 border border-white/10 rounded-xl p-2 flex items-center gap-3 pr-4 shadow-[0_10px_30px_rgba(0,0,0,0.5)] pointer-events-auto">
+            {user ? (
+              <>
+                <img src={user.photoURL || ""} alt={user.displayName || ""} className="w-8 h-8 rounded-lg border border-white/10" referrerPolicy="no-referrer" />
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-white font-bold tracking-tight leading-none mb-0.5">{user.displayName}</span>
+                  <span className="text-[8px] text-emerald-400 font-mono uppercase tracking-widest">{profile?.currentTokens || 0} Tokens</span>
+                </div>
+                <button onClick={handleLogout} className="ml-2 text-white/20 hover:text-white/40" title="Sign Out"><RotateCcw size={14}/></button>
+              </>
+            ) : (
+              <button 
+                onClick={handleLogin}
+                className="px-4 py-2 bg-white text-black text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-emerald-400 transition-colors cursor-pointer"
+              >
+                Sign In
+              </button>
+            )}
+          </div>
+
+          <button 
+            onClick={() => setIsLeaderboardOpen(true)}
+            className="backdrop-blur-md bg-emerald-950/20 p-4 rounded-xl border border-emerald-500/20 shadow-[0_0_20px_rgba(16,185,129,0.05)] text-right group hover:border-emerald-500/40 transition-all pointer-events-auto cursor-pointer"
+          >
+            <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-[0.2em] group-hover:text-emerald-300">Total Money Raised</span>
+            <div className="flex items-baseline gap-1">
+               <span className="text-emerald-500/50 font-mono text-xs">$</span>
+               <span className="text-3xl font-black text-white italic tracking-tighter tabular-nums">
+                 {totalRaised.toLocaleString()}
+               </span>
+            </div>
+            <div className="text-[8px] text-emerald-500/40 uppercase tracking-[0.2em] font-mono mt-1">
+               Click for Leaderboard
+            </div>
+          </button>
         </div>
 
-        <button 
-          onClick={() => setIsLeaderboardOpen(true)}
-          className="backdrop-blur-md bg-emerald-950/20 p-4 rounded-xl border border-emerald-500/20 shadow-[0_0_20px_rgba(16,185,129,0.05)] text-right group hover:border-emerald-500/40 transition-all pointer-events-auto"
-        >
-          <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-[0.2em] group-hover:text-emerald-300">Total Money Raised</span>
-          <div className="flex items-baseline gap-1">
-             <span className="text-emerald-500/50 font-mono text-xs">$</span>
-             <span className="text-3xl font-black text-white italic tracking-tighter tabular-nums">
-               {totalRaised.toLocaleString()}
-             </span>
+        {/* Dynamic Auth Troubleshooting Instructions */}
+        {loginError && (
+          <div className="max-w-[320px] bg-red-950/90 backdrop-blur-md border border-red-500/30 text-red-100 text-[10px] p-4 rounded-xl shadow-2xl space-y-2 pointer-events-auto text-left">
+            <div className="flex justify-between items-start border-b border-red-500/20 pb-1.5">
+              <span className="font-bold text-red-400 uppercase tracking-wider text-[9px]">⚠️ Sign In Notice</span>
+              <button onClick={() => setLoginError(null)} className="text-red-400/60 hover:text-red-300">✕</button>
+            </div>
+            <p className="leading-relaxed font-medium">{loginError}</p>
+            {window.self !== window.top ? (
+              <div className="bg-amber-950/45 border border-amber-500/20 p-2.5 rounded text-amber-300 space-y-1">
+                <p className="font-bold uppercase text-[9px]">💡 AI Studio Sandbox Limitation:</p>
+                <p className="text-[9px]">Browsers restrict OAuth sign-in popups when embedded inside an iframe frame. To sign in successfully, click the <strong>"Open in any new tab"</strong> icon near the top right of your preview tab / URL!</p>
+              </div>
+            ) : (
+              <div className="bg-blue-950/45 border border-blue-500/20 p-2.5 rounded text-blue-300 space-y-1.5">
+                <p className="font-bold uppercase text-[9px]">🛠️ Developer Guide:</p>
+                <p className="text-[9px]">If you're seeing a blank page that closes, add this domain as an authorized redirect under <strong>Authentication &rsaquo; Settings &rsaquo; Authorized Domains</strong> inside your Firebase Console:</p>
+                <code className="block bg-black/40 p-1.5 rounded text-[8px] select-all font-mono break-all text-white border border-white/5">{window.location.hostname}</code>
+                <a 
+                  href="https://console.firebase.google.com/project/knotted-inkwell-mcf5x/authentication/settings" 
+                  target="_blank" 
+                  rel="noreferrer"
+                  className="inline-block mt-1 font-bold text-sky-400 hover:underline"
+                >
+                  Firebase Console Link &rarr;
+                </a>
+              </div>
+            )}
           </div>
-          <div className="text-[8px] text-emerald-500/40 uppercase tracking-[0.2em] font-mono mt-1">
-             Click for Leaderboard
-          </div>
-        </button>
+        )}
       </div>
 
       {/* Leaderboard Modal */}
