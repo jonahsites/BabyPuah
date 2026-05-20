@@ -441,6 +441,18 @@ export default function App() {
       return false;
     }
 
+    if (user.uid.startsWith("guest-")) {
+      setProfile(prev => prev ? {
+        ...prev,
+        currentTokens: Math.max(0, prev.currentTokens - cost),
+        totalDonated: prev.totalDonated + cost
+      } : null);
+      
+      // Update global raised count locally too so guests see their charity donations tick up!
+      setTotalRaised(prev => prev + cost);
+      return true;
+    }
+
     const userRef = doc(db, "users", user.uid);
     try {
       await updateDoc(userRef, {
@@ -784,11 +796,11 @@ export default function App() {
     >
       {/* Team Selection Overlay */}
       {userRole === 'none' && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-[#eae6dc]/80 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-[#eae6dc]/80 backdrop-blur-sm p-4 overflow-y-auto">
           <motion.div 
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="max-w-xl w-full bg-[#fdfaf2] border-4 border-black rounded-3xl p-8 text-center shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden"
+            className="max-w-5xl w-full bg-[#fdfaf2] border-4 border-black rounded-3xl p-8 sm:p-12 text-center shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden my-4"
           >
             {/* Playful neobrutalist corner background strips */}
             <div className="absolute top-0 right-0 w-24 h-6 bg-yellow-400 border-b-4 border-l-4 border-black -skew-x-12 transform translate-x-4 -translate-y-1" />
@@ -797,37 +809,51 @@ export default function App() {
             <motion.h1 
               initial={{ y: -10 }}
               animate={{ y: 0 }}
-              className="text-4xl sm:text-5xl font-black text-black tracking-tight uppercase"
+              className="text-4xl sm:text-6xl font-black text-black tracking-tight uppercase"
             >
               Pick Your Side
             </motion.h1>
-            <p className="text-black/60 text-xs mt-2 uppercase tracking-widest font-mono font-bold mb-10">
+            <p className="text-black/60 text-xs mt-2 uppercase tracking-widest font-mono font-bold mb-12">
               ⚡ Territory War Grid v2.0 ⚡
             </p>
             
-            <div className="grid grid-cols-2 gap-6 relative z-10">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
               <button 
                 onClick={() => setUserRole('blue')}
-                className="group relative overflow-hidden bg-[#3b82f6] text-white border-4 border-black p-6 rounded-2xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:-translate-x-1 hover:shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] active:translate-y-1 active:translate-x-1 active:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all duration-150 cursor-pointer text-center"
+                className="group relative overflow-hidden bg-[#3b82f6] text-white border-4 border-black p-8 rounded-2xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:-translate-x-1 hover:shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] active:translate-y-1 active:translate-x-1 active:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] transition-all duration-150 cursor-pointer text-center flex flex-col items-center justify-center"
               >
-                <div className="text-5xl mb-4 drop-shadow-[2px_2px_0px_rgba(0,0,0,1)] group-hover:scale-110 transition-transform">🟦</div>
-                <div className="text-2xl font-black tracking-tight">TEAM BLUE</div>
-                <div className="text-[10px] text-blue-100 font-bold uppercase tracking-wider font-mono mt-2">Strategic Defense</div>
+                <div className="mb-6 flex items-center justify-center h-80 w-80">
+                  <img 
+                    src="https://lh3.googleusercontent.com/d/1SNCMihirT-5iX9Fp_AZTclJTJ0P5kae4" 
+                    alt="Blue Stroller" 
+                    className="w-80 h-80 object-contain -rotate-90 group-hover:scale-105 transition-transform duration-150 drop-shadow-[8px_8px_0px_rgba(0,0,0,0.35)]"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+                <div className="text-3xl font-black tracking-tight">TEAM BLUE</div>
+                <div className="text-[11px] text-blue-100 font-bold uppercase tracking-wider font-mono mt-2">Strategic Defense</div>
               </button>
               
               <button 
                 onClick={() => setUserRole('red')}
-                className="group relative overflow-hidden bg-[#ef4444] text-white border-4 border-black p-6 rounded-2xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:-translate-x-1 hover:shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] active:translate-y-1 active:translate-x-1 active:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all duration-150 cursor-pointer text-center"
+                className="group relative overflow-hidden bg-[#ef4444] text-white border-4 border-black p-8 rounded-2xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:-translate-x-1 hover:shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] active:translate-y-1 active:translate-x-1 active:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] transition-all duration-150 cursor-pointer text-center flex flex-col items-center justify-center"
               >
-                <div className="text-5xl mb-4 drop-shadow-[2px_2px_0px_rgba(0,0,0,1)] group-hover:scale-110 transition-transform">🟥</div>
-                <div className="text-2xl font-black tracking-tight">TEAM RED</div>
-                <div className="text-[10px] text-red-100 font-bold uppercase tracking-wider font-mono mt-2">Aggressive Maneuver</div>
+                <div className="mb-6 flex items-center justify-center h-80 w-80">
+                  <img 
+                    src="https://lh3.googleusercontent.com/d/1MBQVettULlTDGfz3HDLUojv_4kj7dlkx" 
+                    alt="Red Stroller" 
+                    className="w-80 h-80 object-contain -rotate-90 group-hover:scale-105 transition-transform duration-150 drop-shadow-[8px_8px_0px_rgba(0,0,0,0.35)]"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+                <div className="text-3xl font-black tracking-tight">TEAM RED</div>
+                <div className="text-[11px] text-red-100 font-bold uppercase tracking-wider font-mono mt-2">Aggressive Maneuver</div>
               </button>
             </div>
             
             <button 
               onClick={() => setUserRole('admin')}
-              className="mt-10 px-4 py-2 bg-yellow-300 text-black border-2 border-black rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-yellow-400 transition-colors shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:translate-x-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+              className="mt-12 px-6 py-3 bg-yellow-300 text-black border-2 border-black rounded-lg text-xs font-black uppercase tracking-widest hover:bg-yellow-400 transition-colors shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:translate-x-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
             >
               Enter as Spectator / Admin
             </button>
@@ -1465,6 +1491,46 @@ export default function App() {
               >
                 Firebase Console Link &rarr;
               </a>
+
+              <div className="relative flex py-2 items-center">
+                <div className="flex-grow border-t border-black/20"></div>
+                <span className="flex-shrink mx-3 text-[9px] text-black/40 font-bold uppercase tracking-wider">OR</span>
+                <div className="flex-grow border-t border-black/20"></div>
+              </div>
+
+              <button
+                onClick={() => {
+                  const guestId = `guest-${Math.floor(Math.random() * 1000000)}`;
+                  setUser({
+                    uid: guestId,
+                    displayName: "Guest Challenger",
+                    photoURL: "https://lh3.googleusercontent.com/d/1SNCMihirT-5iX9Fp_AZTclJTJ0P5kae4",
+                    email: "guest@local.sim",
+                    emailVerified: false,
+                    isAnonymous: true,
+                    metadata: {},
+                    providerData: [],
+                    refreshToken: "",
+                    tenantId: null,
+                    delete: async () => {},
+                    getIdToken: async () => "",
+                    getIdTokenResult: async () => ({} as any),
+                    reload: async () => {},
+                    toJSON: () => ({})
+                  } as any);
+                  setProfile({
+                    displayName: "Guest Challenger",
+                    photoURL: "https://lh3.googleusercontent.com/d/1SNCMihirT-5iX9Fp_AZTclJTJ0P5kae4",
+                    totalDonated: 0,
+                    currentTokens: 500
+                  } as any);
+                  setLoginError(null);
+                  addLog("Guest Challenger joined the battle locally!");
+                }}
+                className="w-full px-4 py-2.5 bg-green-300 hover:bg-green-400 text-black border-2 border-black font-black text-[10px] uppercase rounded-xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer text-center"
+              >
+                🎮 Play as Local Guest (500 free tokens)
+              </button>
             </div>
           </div>
         )}
