@@ -48,6 +48,35 @@ export default function App() {
   const initialRed = { x: 149, y: 195 };
 
   // Login logic
+  const handleGuestLogin = () => {
+    const guestId = `guest-${Math.floor(Math.random() * 1000000)}`;
+    setUser({
+      uid: guestId,
+      displayName: "Guest Challenger",
+      photoURL: "https://lh3.googleusercontent.com/d/1SNCMihirT-5iX9Fp_AZTclJTJ0P5kae4",
+      email: "guest@local.sim",
+      emailVerified: false,
+      isAnonymous: true,
+      metadata: {},
+      providerData: [],
+      refreshToken: "",
+      tenantId: null,
+      delete: async () => {},
+      getIdToken: async () => "",
+      getIdTokenResult: async () => ({} as any),
+      reload: async () => {},
+      toJSON: () => ({})
+    } as any);
+    setProfile({
+      displayName: "Guest Challenger",
+      photoURL: "https://lh3.googleusercontent.com/d/1SNCMihirT-5iX9Fp_AZTclJTJ0P5kae4",
+      totalDonated: 0,
+      currentTokens: 500
+    } as any);
+    setLoginError(null);
+    addLog("Guest Challenger joined the battle locally!");
+  };
+
   const handleLogin = async () => {
     setLoginError(null);
     const provider = new GoogleAuthProvider();
@@ -56,11 +85,11 @@ export default function App() {
     } catch (err: any) {
       console.error("Login failed", err);
       if (err.code === "auth/unauthorized-domain") {
-        setLoginError(`Domain Unauthorized: please add "${window.location.hostname}" to your Firebase project settings.`);
+        setLoginError(`Domain Unauthorized: "${window.location.hostname}" is not authorized on your Firebase console settings. Please add it to Authorized Domains.`);
       } else if (err.code === "auth/popup-blocked") {
         setLoginError("Popup was blocked by your browser. Please allow popups or open in a new tab.");
       } else if (err.code === "auth/popup-closed-by-user") {
-        setLoginError("Popup closed by user before sign in was completed.");
+        setLoginError(`Google sign-in popup closed immediately. Since you're running on custom domain "${window.location.hostname}", this is usually because it is not added to "Authorized Domains" inside your Firebase console settings.`);
       } else {
         setLoginError(err.message || String(err));
       }
@@ -851,12 +880,22 @@ export default function App() {
               </button>
             </div>
             
-            <button 
-              onClick={() => setUserRole('admin')}
-              className="mt-12 px-6 py-3 bg-yellow-300 text-black border-2 border-black rounded-lg text-xs font-black uppercase tracking-widest hover:bg-yellow-400 transition-colors shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:translate-x-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
-            >
-              Enter as Spectator / Admin
-            </button>
+            <div className="mt-12 flex flex-col sm:flex-row gap-4 items-center justify-center relative z-10 w-full max-w-md mx-auto">
+              <button 
+                onClick={() => setUserRole('admin')}
+                className="w-full sm:w-auto px-6 py-3 bg-yellow-300 text-black border-2 border-black rounded-xl text-xs font-black uppercase tracking-widest hover:bg-yellow-400 transition-colors shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:translate-x-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+              >
+                🕶️ Spectate / Admin
+              </button>
+              {!user && (
+                <button 
+                  onClick={handleGuestLogin}
+                  className="w-full sm:w-auto px-6 py-3 bg-green-300 text-black border-2 border-black rounded-xl text-xs font-black uppercase tracking-widest hover:bg-green-400 transition-colors shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:translate-x-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+                >
+                  🎮 Play as Guest
+                </button>
+              )}
+            </div>
           </motion.div>
         </div>
       )}
@@ -1499,34 +1538,7 @@ export default function App() {
               </div>
 
               <button
-                onClick={() => {
-                  const guestId = `guest-${Math.floor(Math.random() * 1000000)}`;
-                  setUser({
-                    uid: guestId,
-                    displayName: "Guest Challenger",
-                    photoURL: "https://lh3.googleusercontent.com/d/1SNCMihirT-5iX9Fp_AZTclJTJ0P5kae4",
-                    email: "guest@local.sim",
-                    emailVerified: false,
-                    isAnonymous: true,
-                    metadata: {},
-                    providerData: [],
-                    refreshToken: "",
-                    tenantId: null,
-                    delete: async () => {},
-                    getIdToken: async () => "",
-                    getIdTokenResult: async () => ({} as any),
-                    reload: async () => {},
-                    toJSON: () => ({})
-                  } as any);
-                  setProfile({
-                    displayName: "Guest Challenger",
-                    photoURL: "https://lh3.googleusercontent.com/d/1SNCMihirT-5iX9Fp_AZTclJTJ0P5kae4",
-                    totalDonated: 0,
-                    currentTokens: 500
-                  } as any);
-                  setLoginError(null);
-                  addLog("Guest Challenger joined the battle locally!");
-                }}
+                onClick={handleGuestLogin}
                 className="w-full px-4 py-2.5 bg-green-300 hover:bg-green-400 text-black border-2 border-black font-black text-[10px] uppercase rounded-xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer text-center"
               >
                 🎮 Play as Local Guest (500 free tokens)
