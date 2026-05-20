@@ -1468,7 +1468,7 @@ export default function App() {
             </div>
             
             <p className="font-sans font-extrabold text-[#dc2626] leading-snug">
-              Domain Unauthorized: please add "baby-puah.vercel.app" to your Firebase project settings.
+              {loginError}
             </p>
 
             <div className="border-t-2 border-black pt-3 mt-1 space-y-2">
@@ -1479,7 +1479,7 @@ export default function App() {
               
               <div className="bg-white border-2 border-dashed border-black p-2 rounded-lg text-center mt-1">
                 <code className="text-xs select-all font-bold font-mono text-black">
-                  baby-puah.vercel.app
+                  {window.location.hostname}
                 </code>
               </div>
 
