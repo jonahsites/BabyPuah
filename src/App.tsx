@@ -12,6 +12,21 @@ import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, User 
 
 const GAME_ID = "global";
 
+const JACKPOT_SLICES = [
+  { value: 50, color: '#eab308' }, // Golden/Yellow Jackpot
+  { value: 5, color: '#ef4444' },  // Vibrant Red
+  { value: 20, color: '#3b82f6' }, // Electric Blue
+  { value: 10, color: '#10b981' }, // Emerald Green
+  { value: 1, color: '#ec4899' },  // Hot Pink
+  { value: 30, color: '#8b5cf6' }, // Neon Purple
+  { value: 15, color: '#06b6d4' }, // Cyan
+  { value: 40, color: '#f97316' }, // Blaze Orange
+  { value: 2, color: '#14b8a6' },  // Teal
+  { value: 25, color: '#a855f7' }, // Lavender/Purple
+  { value: 8, color: '#f43f5e' },  // Rose
+  { value: 35, color: '#6366f1' }  // Indigo
+];
+
 export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [profile, setProfile] = useState<{ displayName: string, totalDonated: number, currentTokens: number } | null>(null);
@@ -165,6 +180,7 @@ export default function App() {
 
   const [isWallBuilding, setIsWallBuilding] = useState<{ side: 'blue' | 'red', budget: number } | null>(null);
   const [jackpotResult, setJackpotResult] = useState<number | null>(null);
+  const [jackpotSpinning, setJackpotSpinning] = useState<{ side: 'blue' | 'red', rotation: number, isFinished: boolean, resultValue: number } | null>(null);
   const [isLogOpen, setIsLogOpen] = useState(true);
   
   // Trails - using string keys "x,y"
@@ -554,21 +570,27 @@ export default function App() {
     const success = await spendTokens(side, cost);
     if (!success) return;
     
-    const result = Math.floor(Math.random() * 50) + 1;
-    setJackpotResult(result);
-    addLog(`${side === 'blue' ? 'Blue' : 'Red'} spun the Jackpot and got ${result} steps!`);
+    // Choose index from the JACKPOT_SLICES list
+    const idx = Math.floor(Math.random() * JACKPOT_SLICES.length);
+    const result = JACKPOT_SLICES[idx].value;
     
-    setTimeout(() => {
-      setJackpotResult(null);
-      const rot = side === 'blue' ? blueRot : redRot;
-      let dir = 'right';
-      if (rot === -90) dir = 'up';
-      if (rot === 90) dir = 'down';
-      if (rot === 180) dir = 'left';
-      if (rot === 0) dir = 'right';
-      
-      executeBatchMove(side, side, 'move', result, dir);
-    }, 2000);
+    // Calculate precise target rotation angle
+    const segmentAngle = idx * 30 + 15;
+    const targetAngle = -90 - segmentAngle; // aligns segment center with 12 o'clock pointer
+    const finalRotation = 360 * 6 + targetAngle; // 6 full clockwise turns + alignment offset
+    
+    // Close the original prompt modal to let the wheel shine
+    setActiveModal(null);
+    
+    // Begin wheel spin
+    setJackpotSpinning({
+      side,
+      rotation: finalRotation,
+      isFinished: false,
+      resultValue: result
+    });
+    
+    addLog(`${side === 'blue' ? 'Blue' : 'Red'} initiated the Jackpot fortune spin...`);
   };
 
   const handleTeleport = async (side: 'blue' | 'red') => {
@@ -966,12 +988,124 @@ export default function App() {
         </div>
       )}
 
-      {/* Jackpot Spinner */}
-      {jackpotResult !== null && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80">
-          <div className="text-6xl font-bold text-yellow-400 animate-bounce">
-            JACKPOT: {jackpotResult} STEPS!
-          </div>
+      {/* Real Spinning Jackpot Wheel */}
+      {jackpotSpinning !== null && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-[#fffef4] border-4 border-black p-6 rounded-3xl max-w-sm w-full shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] text-center relative overflow-hidden"
+          >
+            {/* Top decorative banner */}
+            <div className={`text-[10px] font-black uppercase inline-block px-3 py-1 border-2 border-black rounded-full mb-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-black ${
+              jackpotSpinning.side === 'blue' ? 'bg-blue-200' : 'bg-red-200'
+            }`}>
+              🎰 {jackpotSpinning.side === 'blue' ? 'Blue Team' : 'Red Team'} jackpot
+            </div>
+
+            <h3 className="font-sans font-black text-2xl text-black uppercase tracking-tight mb-6">
+              {jackpotSpinning.isFinished ? "🎉 SPIN COMPLETE! 🎉" : "🌀 SPINNING WHEEL... 🌀"}
+            </h3>
+
+            {/* Wheel Container with Pointer */}
+            <div className="relative w-64 h-64 mx-auto mb-6 flex items-center justify-center">
+              {/* Little neo-brutalist pointer at 12 o'clock */}
+              <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-r-[10px] border-t-[16px] border-l-transparent border-r-transparent border-t-rose-600 z-20" />
+              <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[12px] border-r-[12px] border-t-[18px] border-l-transparent border-r-transparent border-t-black z-10" />
+
+              {/* Spinning Wheel */}
+              <motion.div
+                initial={{ rotate: 0 }}
+                animate={{ rotate: jackpotSpinning.rotation }}
+                transition={{ 
+                  type: "spring",
+                  damping: 18, 
+                  stiffness: 50,
+                  mass: 1.2
+                }}
+                className="w-full h-full rounded-full border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative select-none origin-center"
+                onAnimationComplete={() => {
+                  setJackpotSpinning(prev => prev ? { ...prev, isFinished: true } : null);
+                }}
+              >
+                {/* SVG representing the segmented slices */}
+                <svg viewBox="0 0 200 200" className="w-full h-full rounded-full overflow-hidden select-none pointer-events-none">
+                  {JACKPOT_SLICES.map((slice, i) => (
+                    <g key={i} transform={`rotate(${i * 30}, 100, 100)`}>
+                      {/* Wedge segment */}
+                      <path 
+                        d="M 100 100 L 200 100 A 100 100 0 0 1 186.6 150 Z" 
+                        fill={slice.color} 
+                        stroke="black" 
+                        strokeWidth="3.5" 
+                      />
+                      {/* Text segment centered radial offset */}
+                      <g transform="rotate(15, 100, 100)">
+                        <text 
+                          x="152" 
+                          y="105" 
+                          fontWeight="900" 
+                          textAnchor="middle" 
+                          fontSize="13px" 
+                          fill="white"
+                          fontFamily="sans-serif"
+                          stroke="black"
+                          strokeWidth="2.5"
+                          paintOrder="stroke"
+                          transform="rotate(90, 152, 105)"
+                        >
+                          {slice.value}
+                        </text>
+                      </g>
+                    </g>
+                  ))}
+                  {/* Outer circle line helper */}
+                  <circle cx="100" cy="100" r="99" fill="none" stroke="black" strokeWidth="3" />
+                  {/* Center cap cover hub */}
+                  <circle cx="100" cy="100" r="18" fill="white" stroke="black" strokeWidth="4" />
+                  <circle cx="100" cy="100" r="8" fill="black" />
+                </svg>
+              </motion.div>
+            </div>
+
+            {/* Post-Spin Celebration & Actions */}
+            <div className="h-20 flex flex-col items-center justify-center">
+              {jackpotSpinning.isFinished ? (
+                <motion.div 
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="flex flex-col items-center gap-2"
+                >
+                  <p className="text-sm font-bold text-black/70">
+                    WON <span className="text-xl font-black text-rose-600 border px-2 py-0.5 rounded-md bg-yellow-200 border-black">{jackpotSpinning.resultValue}</span> STEPS!
+                  </p>
+                  
+                  <button
+                    onClick={() => {
+                      const { side, resultValue } = jackpotSpinning;
+                      const rot = side === 'blue' ? blueRot : redRot;
+                      let dir = 'right';
+                      if (rot === -90) dir = 'up';
+                      if (rot === 90) dir = 'down';
+                      if (rot === 180) dir = 'left';
+                      if (rot === 0) dir = 'right';
+                      
+                      executeBatchMove(side, side, 'move', resultValue, dir);
+                      addLog(`${side === 'blue' ? 'Blue' : 'Red'} executed their jackpot of ${resultValue} steps!`);
+                      setJackpotSpinning(null);
+                    }}
+                    className="px-6 py-2 rounded-xl bg-yellow-300 hover:bg-yellow-400 border-2 border-black font-black text-xs uppercase tracking-wider text-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer"
+                  >
+                    🚀 Let's Move!
+                  </button>
+                </motion.div>
+              ) : (
+                <div className="text-black/50 font-bold text-xs flex items-center gap-2 animate-pulse">
+                  <span>⚙️</span> Physics engine deciding your fate...
+                </div>
+              )}
+            </div>
+          </motion.div>
         </div>
       )}
 
