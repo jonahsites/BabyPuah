@@ -1430,32 +1430,42 @@ export default function App() {
 
         {/* Dynamic Auth Troubleshooting Instructions */}
         {loginError && (
-          <div className="max-w-[320px] bg-red-950/90 backdrop-blur-md border border-red-500/30 text-red-100 text-[10px] p-4 rounded-xl shadow-2xl space-y-2 pointer-events-auto text-left">
-            <div className="flex justify-between items-start border-b border-red-500/20 pb-1.5">
-              <span className="font-bold text-red-400 uppercase tracking-wider text-[9px]">⚠️ Sign In Notice</span>
-              <button onClick={() => setLoginError(null)} className="text-red-400/60 hover:text-red-300">✕</button>
+          <div className="max-w-[320px] bg-[#fffbf2] border-3 border-black text-black text-xs p-4 rounded-2xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-3 pointer-events-auto text-left">
+            <div className="flex justify-between items-center border-b-2 border-black pb-2">
+              <span className="font-extrabold text-red-600 uppercase tracking-wider text-[11px] flex items-center gap-1">⚠️ SIGN IN NOTICE</span>
+              <button 
+                onClick={() => setLoginError(null)} 
+                className="text-gray-500 hover:text-black hover:bg-gray-200 border border-transparent hover:border-black rounded px-1.5 py-0.5 text-xs transition-all font-black cursor-pointer"
+              >
+                ✕
+              </button>
             </div>
-            <p className="leading-relaxed font-medium">{loginError}</p>
-            {window.self !== window.top ? (
-              <div className="bg-amber-950/45 border border-amber-500/20 p-2.5 rounded text-amber-300 space-y-1">
-                <p className="font-bold uppercase text-[9px]">💡 AI Studio Sandbox Limitation:</p>
-                <p className="text-[9px]">Browsers restrict OAuth sign-in popups when embedded inside an iframe frame. To sign in successfully, click the <strong>"Open in any new tab"</strong> icon near the top right of your preview tab / URL!</p>
+            
+            <p className="font-sans font-extrabold text-[#dc2626] leading-snug">
+              Domain Unauthorized: please add "baby-puah.vercel.app" to your Firebase project settings.
+            </p>
+
+            <div className="border-t-2 border-black pt-3 mt-1 space-y-2">
+              <p className="font-black text-[10px] tracking-wider text-black uppercase">DEVELOPER GUIDE:</p>
+              <p className="text-[10px] leading-relaxed text-black/80 font-medium font-sans">
+                If you're seeing a blank page that closes, add this domain as an authorized redirect under <strong className="font-extrabold">Authentication &rsaquo; Settings &rsaquo; Authorized Domains</strong> inside your Firebase Console:
+              </p>
+              
+              <div className="bg-white border-2 border-dashed border-black p-2 rounded-lg text-center mt-1">
+                <code className="text-xs select-all font-bold font-mono text-black">
+                  baby-puah.vercel.app
+                </code>
               </div>
-            ) : (
-              <div className="bg-blue-950/45 border border-blue-500/20 p-2.5 rounded text-blue-300 space-y-1.5">
-                <p className="font-bold uppercase text-[9px]">🛠️ Developer Guide:</p>
-                <p className="text-[9px]">If you're seeing a blank page that closes, add this domain as an authorized redirect under <strong>Authentication &rsaquo; Settings &rsaquo; Authorized Domains</strong> inside your Firebase Console:</p>
-                <code className="block bg-black/40 p-1.5 rounded text-[8px] select-all font-mono break-all text-white border border-white/5">{window.location.hostname}</code>
-                <a 
-                  href="https://console.firebase.google.com/project/knotted-inkwell-mcf5x/authentication/settings" 
-                  target="_blank" 
-                  rel="noreferrer"
-                  className="inline-block mt-1 font-bold text-sky-400 hover:underline"
-                >
-                  Firebase Console Link &rarr;
-                </a>
-              </div>
-            )}
+
+              <a 
+                href="https://console.firebase.google.com/project/knotted-inkwell-mcf5x/authentication/settings" 
+                target="_blank" 
+                rel="noreferrer"
+                className="inline-flex items-center justify-center w-full mt-2 px-4 py-2.5 bg-yellow-300 hover:bg-yellow-400 text-black border-2 border-black font-black text-[10px] uppercase rounded-xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer text-center"
+              >
+                Firebase Console Link &rarr;
+              </a>
+            </div>
           </div>
         )}
       </div>
