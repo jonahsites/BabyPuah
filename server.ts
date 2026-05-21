@@ -8,6 +8,29 @@ dotenv.config();
 
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
+// Helper to get fully qualified base URL safely
+function getBaseUrl(req: express.Request): string {
+  // 1. Try Origin header
+  const origin = req.get("origin");
+  if (origin && origin !== "null" && origin.startsWith("http")) {
+    return origin.replace(/\/$/, "");
+  }
+
+  // 2. Try Referer header (extract protocol + host)
+  const referer = req.get("referer");
+  if (referer && referer.startsWith("http")) {
+    try {
+      const url = new URL(referer);
+      return url.origin;
+    } catch (_) {}
+  }
+
+  // 3. Fallback to host headers
+  const forwardedProto = (req.headers["x-forwarded-proto"] as string) || req.protocol;
+  const host = req.get("host") || "localhost:3000";
+  return `${forwardedProto}://${host}`.replace(/\/$/, "");
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -25,11 +48,12 @@ async function startServer() {
   // API Route: Create Checkout Session
   app.post("/api/create-checkout-session", async (req, res) => {
     const { tokens, userId } = req.body;
+    const baseUrl = getBaseUrl(req);
 
     if (!stripe) {
       // Sandbox Checkout Simulation Mode
       const mockSessionId = `mock_session_${Date.now()}_u_${userId}_t_${tokens}`;
-      const mockSessionUrl = `${req.headers.origin}/?payment=success&session_id=${mockSessionId}&sandbox=true`;
+      const mockSessionUrl = `${baseUrl}/?payment=success&session_id=${mockSessionId}&sandbox=true`;
       return res.json({ id: mockSessionId, url: mockSessionUrl });
     }
     
@@ -50,8 +74,8 @@ async function startServer() {
           },
         ],
         mode: "payment",
-        success_url: `${req.headers.origin}/?payment=success&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${req.headers.origin}/?payment=cancel`,
+        success_url: `${baseUrl}/?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/?payment=cancel`,
         metadata: {
           userId,
           tokens: tokens.toString(),

@@ -135,12 +135,25 @@ export default function App() {
         body: JSON.stringify({ tokens: amount, userId: user.uid }),
       });
 
+      const contentType = response.headers.get("content-type");
+      const isJson = contentType && contentType.includes("application/json");
+
       if (!response.ok) {
-        throw new Error(`Server returned status ${response.status}. The server may temporarily be restarting after saving Stripe credentials. Please try again in 5-10 seconds!`);
+        let errMsg = `Server returned status ${response.status}.`;
+        if (isJson) {
+          try {
+            const errData = await response.json();
+            if (errData && errData.error) {
+              errMsg = `Payment failed: ${errData.error}`;
+            }
+          } catch (_) {}
+          throw new Error(errMsg);
+        } else {
+          throw new Error(`${errMsg} The server may temporarily be restarting after saving Stripe credentials. Please try again in 5-10 seconds!`);
+        }
       }
 
-      const contentType = response.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
+      if (!isJson) {
         throw new Error("Server responded with HTML page instead of JSON. The backend is currently restarting to load your real Stripe keys. Please wait 10 seconds and try again!");
       }
 
