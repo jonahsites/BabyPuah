@@ -300,6 +300,20 @@ export default function App() {
   const [redTrail, setRedTrail] = useState<string[]>([]);
 
   const [isInitializing, setIsInitializing] = useState(true);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(0);
+
+  useEffect(() => {
+    const hasSeenOnboarding = localStorage.getItem("babypush_onboarded_v3");
+    if (!hasSeenOnboarding) {
+      setIsOnboardingOpen(true);
+    }
+  }, []);
+
+  const handleCloseOnboarding = () => {
+    localStorage.setItem("babypush_onboarded_v3", "true");
+    setIsOnboardingOpen(false);
+  };
 
   const canControl = (side: 'blue' | 'red') => {
     if (isDevMode) return true;
@@ -1148,6 +1162,168 @@ export default function App() {
         </div>
       )}
 
+      {/* Onboarding / Help Modal */}
+      {isOnboardingOpen && (
+        <div className="fixed inset-0 z-[350] flex items-center justify-center bg-black/75 backdrop-blur-md p-4 overflow-y-auto">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="max-w-xl w-full bg-[#fdfaf2] border-4 border-black rounded-2xl md:rounded-3xl p-6 sm:p-8 text-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden my-auto"
+          >
+            {/* Title & Close button */}
+            <div className="flex justify-between items-center border-b-2 border-black pb-3 mb-4">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">🍼</span>
+                <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tight text-black">BABY PUSH! GUIDE</h2>
+              </div>
+              <button 
+                onClick={handleCloseOnboarding} 
+                className="text-gray-600 hover:text-black hover:bg-gray-200 border-2 border-black rounded-xl px-2.5 py-1 text-xs font-black transition-all cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5"
+              >
+                ✕ Close
+              </button>
+            </div>
+
+            {/* Step Navigation Tabs */}
+            <div className="grid grid-cols-3 gap-2 mb-6">
+              {[
+                { title: "🐣 Concept", icon: "🐣" },
+                { title: "🎮 Strategy", icon: "🎮" },
+                { title: "💝 Charity", icon: "💝" }
+              ].map((tab, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => setOnboardingStep(idx)}
+                  className={`py-1.5 px-1 rounded-xl border-2 border-black font-black text-[10px] sm:text-xs uppercase tracking-tight transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 ${
+                    onboardingStep === idx 
+                      ? "bg-yellow-300 text-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]" 
+                      : "bg-white text-black/60 hover:text-black"
+                  }`}
+                >
+                  <span className="mr-1">{tab.icon}</span>{tab.title}
+                </button>
+              ))}
+            </div>
+
+            {/* Slide Content */}
+            <div className="min-h-[220px] flex flex-col justify-between">
+              {onboardingStep === 0 && (
+                <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}>
+                  <h3 className="text-base sm:text-lg font-black uppercase tracking-tight text-[#3b82f6] mb-2 flex items-center gap-1.5">
+                    🐣 Welcome to the Baby Grid!
+                  </h3>
+                  <p className="text-xs sm:text-sm text-black/80 font-medium leading-relaxed mb-4">
+                    Baby Push! is an interactive, real-time multiplayer <strong>Territory War</strong>. Drive your stroller vehicle across the canvas, painting the grid with your team's signature trail to capture nodes and dominate the zone.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3 bg-yellow-50 border-2 border-dashed border-black/30 p-3 rounded-xl">
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-5 bg-[#3b82f6] rounded border border-black flex items-center justify-center text-white text-[10px] font-black">B</div>
+                      <span className="text-[11px] font-black uppercase">Team Blue: Defense</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-5 bg-[#ef4444] rounded border border-black flex items-center justify-center text-white text-[10px] font-black">R</div>
+                      <span className="text-[11px] font-black uppercase">Team Red: Maneuver</span>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {onboardingStep === 1 && (
+                <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}>
+                  <h3 className="text-base sm:text-lg font-black uppercase tracking-tight text-[#ef4444] mb-2 flex items-center gap-1.5">
+                    🛡️ Combat & Weapons
+                  </h3>
+                  <p className="text-xs sm:text-sm text-black/80 font-medium leading-relaxed mb-3">
+                    Navigate manually with your keyboard, or support your faction using <strong>Game Tokens</strong> to launch dynamic tactical operations:
+                  </p>
+                  <ul className="text-[11px] sm:text-xs text-black/80 font-bold space-y-1.5">
+                    <li className="flex items-start gap-1.5">
+                      <span>🚧</span>
+                      <div><strong>Erect Walls:</strong> Block off narrow choke points and shelter your team's territory.</div>
+                    </li>
+                    <li className="flex items-start gap-1.5">
+                      <span>💣</span>
+                      <div><strong>Deploy Minefields:</strong> Seed 20 invisible mines. Detonating a mine blows strollers back to spawn!</div>
+                    </li>
+                    <li className="flex items-start gap-1.5">
+                      <span>🏹</span>
+                      <div><strong>Baby Slingshot:</strong> Paint dynamic, wide-scale pixels at a distance with drag-and-launch.</div>
+                    </li>
+                  </ul>
+                </motion.div>
+              )}
+
+              {onboardingStep === 2 && (
+                <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}>
+                  <h3 className="text-base sm:text-lg font-black uppercase tracking-tight text-emerald-700 mb-2 flex items-center gap-1.5">
+                    💝 Powering Charity Global Aid
+                  </h3>
+                  <p className="text-xs sm:text-sm text-black/80 font-medium leading-relaxed mb-3">
+                    This battle serves a higher purpose. Every single game token represents a <strong>$1 direct contribution</strong> to real-world global humanitarian aid.
+                  </p>
+                  <p className="text-xs text-black/70 leading-relaxed mb-3">
+                    Refill tokens with <strong>Starter, Tactician, or Tycoon</strong> packs inside the store. Real-world payments go directly to aid channels, logging your name onto our live <strong>Hall of Fame Leaderboard</strong>.
+                  </p>
+                  <div className="bg-[#ecfdf5] border-2 border-[#10b981] p-3 rounded-xl text-center">
+                    <span className="text-[10px] font-black text-emerald-800 uppercase tracking-wider leading-none">
+                      🏆 100% OF REAL STORE COINS DIRECTLY AID HUMANITARIAN EFFORTS
+                    </span>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Bottom Action bar */}
+              <div className="flex justify-between items-center border-t-2 border-black/10 pt-4 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setOnboardingStep((prev) => Math.max(0, prev - 1))}
+                  disabled={onboardingStep === 0}
+                  className={`px-3 py-1.5 rounded-xl border-2 border-black text-xs font-black uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 cursor-pointer select-none ${
+                    onboardingStep === 0 
+                      ? "opacity-45 cursor-not-allowed bg-gray-100" 
+                      : "bg-white hover:bg-gray-50 text-black"
+                  }`}
+                >
+                  &larr; Prev
+                </button>
+
+                {/* Dot Index */}
+                <div className="flex gap-1.5">
+                  {[0, 1, 2].map((i) => (
+                    <div
+                      key={i}
+                      onClick={() => setOnboardingStep(i)}
+                      className={`w-2.5 h-2.5 rounded-full border border-black cursor-pointer transition-all ${
+                        onboardingStep === i ? "bg-black scale-110" : "bg-white"
+                      }`}
+                    />
+                  ))}
+                </div>
+
+                {onboardingStep < 2 ? (
+                  <button
+                    type="button"
+                    onClick={() => setOnboardingStep((prev) => Math.min(2, prev + 1))}
+                    className="px-4 py-1.5 bg-yellow-300 hover:bg-yellow-400 text-black border-2 border-black text-xs font-black uppercase rounded-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:translate-x-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] cursor-pointer select-none"
+                  >
+                    Next &rarr;
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleCloseOnboarding}
+                    className="px-4 py-1.5 bg-emerald-400 hover:bg-emerald-500 text-white font-black border-2 border-black text-xs font-black uppercase rounded-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:translate-x-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] cursor-pointer select-none"
+                  >
+                    🚀 Enter Battle!
+                  </button>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       {/* Stripe Payment Success Alert */}
       {paymentSuccessMessage && (
         <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 text-black">
@@ -1932,7 +2108,17 @@ export default function App() {
           </div>
 
           {/* Charity and leaderboard trigger */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <button 
+              onClick={() => {
+                setOnboardingStep(0);
+                setIsOnboardingOpen(true);
+              }}
+              className="bg-sky-300 border-2 border-black w-6 h-6 flex items-center justify-center rounded-lg shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 text-black font-black text-xs cursor-pointer select-none"
+              title="How to Play"
+            >
+              ❓
+            </button>
             <button 
               onClick={() => setIsLeaderboardOpen(true)}
               className="bg-yellow-300 border-2 border-black px-2.5 py-1 rounded-xl flex items-center gap-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 text-black font-black text-[9.5px] uppercase cursor-pointer"
@@ -1971,6 +2157,17 @@ export default function App() {
       {/* Charity Counter (Desktop only) */}
       <div className="hidden md:flex fixed top-8 right-8 z-50 flex-col items-end gap-3">
         <div className="flex items-center gap-4">
+          <button 
+            type="button"
+            onClick={() => {
+              setOnboardingStep(0);
+              setIsOnboardingOpen(true);
+            }}
+            className="bg-sky-300 border-3 border-black w-12 h-12 flex items-center justify-center rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:translate-x-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all font-black text-xl cursor-pointer select-none"
+            title="How to Play / About Baby Push!"
+          >
+            ❓
+          </button>
           {/* Profile / Login */}
           <div className="bg-[#fcfaf4] border-3 border-black rounded-2xl p-2.5 flex items-center gap-3 pr-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] pointer-events-auto">
             {user ? (
@@ -2129,22 +2326,10 @@ export default function App() {
               </p>
               {stripeConfig && (
                 <div className="flex flex-col items-center gap-2 mt-4">
-                  {stripeConfig.stripeEnabled ? (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] sm:text-xs font-mono font-black border-2 border-emerald-500 uppercase tracking-wide shadow-[2px_2px_0px_0px_rgba(16,185,129,1)] animate-pulse">
-                      ● SECURE REAL STRIPE PAYMENTS ENABLED
+                  {!stripeConfig.stripeEnabled && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 text-amber-850 text-[10px] sm:text-xs font-mono font-black border-2 border-amber-500 uppercase tracking-wide shadow-[2px_2px_0px_0px_rgba(245,158,11,1)]">
+                      ⚡ DEV SANDBOX TEST MODE ACTIVE (SIMULATE CHECKOUT FOR FREE)
                     </span>
-                  ) : (
-                    <>
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 text-amber-850 text-[10px] sm:text-xs font-mono font-black border-2 border-amber-500 uppercase tracking-wide shadow-[2px_2px_0px_0px_rgba(245,158,11,1)]">
-                        ⚡ DEV SANDBOX TEST MODE ACTIVE (SIMULATE CHECKOUT FOR FREE)
-                      </span>
-                      <div className="max-w-xl text-[#854d0e] bg-[#fef9c3] border-2 border-[#ca8a04] px-4 py-2.5 rounded-2xl text-[10px] sm:text-xs font-medium text-center space-y-1 mt-2 shadow-[3px_3px_0px_0px_rgba(202,138,4,1)] relative z-10">
-                        <p className="font-extrabold uppercase tracking-tight">🛠️ How to connect your actual Stripe account:</p>
-                        <p className="opacity-90">1. Go to your **Stripe Dashboard** &rarr; Developers &rarr; API keys, and copy your **Secret key** (looks like <code className="bg-black/10 px-1 rounded font-mono text-[9px] sm:text-[10px]">sk_test_...</code>).</p>
-                        <p className="opacity-90">2. Open the **Settings menu** (gear icon) in the bottom-left or top-right of your **AI Studio panel**.</p>
-                        <p className="opacity-90">3. Set <code className="bg-black/10 px-1 rounded font-mono text-[9px] sm:text-[10px]">STRIPE_SECRET_KEY</code> with your copied key. The server will restart automatically with real checkouts enabled!</p>
-                      </div>
-                    </>
                   )}
                 </div>
               )}
