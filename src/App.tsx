@@ -240,6 +240,13 @@ export default function App() {
   } | null>(null);
 
   const [userRole, setUserRole] = useState<'blue' | 'red' | 'admin' | 'none'>('none');
+  const [mobileActiveSide, setMobileActiveSide] = useState<'blue' | 'red'>('blue');
+
+  useEffect(() => {
+    if (userRole === 'blue' || userRole === 'red') {
+      setMobileActiveSide(userRole);
+    }
+  }, [userRole]);
 
   const [walls, setWalls] = useState<string[]>([]); // "x,y"
   const [mines, setMines] = useState<string[]>([]); // "x,y"
@@ -378,6 +385,15 @@ export default function App() {
     const grid = gridRef.current;
     if (!viewport || !grid) return;
 
+    // Center the grid beautifully in the viewport on mount
+    const vw = viewport.clientWidth || window.innerWidth;
+    const vh = viewport.clientHeight || window.innerHeight;
+    const gw = size * 4;
+    const gh = size * 4;
+    transformRef.current.scale = vw < 640 ? 0.45 : 1.0;
+    transformRef.current.x = (vw - gw * transformRef.current.scale) / 2;
+    transformRef.current.y = (vh - gh * transformRef.current.scale) / 2;
+
     const update = () => {
       grid.style.transform = `translate(${transformRef.current.x}px, ${transformRef.current.y}px) scale(${transformRef.current.scale})`;
     };
@@ -401,8 +417,8 @@ export default function App() {
       update();
     };
 
-    const handleMouseDown = (e: MouseEvent) => {
-      if ((e.target as HTMLElement).closest('button')) return;
+    const handlePointerDown = (e: PointerEvent) => {
+      if ((e.target as HTMLElement).closest('button, input, select, textarea, a') || isWallBuilding) return;
       isDragging.current = true;
       startPos.current = {
         x: e.clientX - transformRef.current.x,
@@ -411,28 +427,28 @@ export default function App() {
       viewport.style.cursor = 'grabbing';
     };
 
-    const handleMouseMove = (e: MouseEvent) => {
+    const handlePointerMove = (e: PointerEvent) => {
       if (!isDragging.current) return;
       transformRef.current.x = e.clientX - startPos.current.x;
       transformRef.current.y = e.clientY - startPos.current.y;
       update();
     };
 
-    const handleMouseUp = () => {
+    const handlePointerUp = () => {
       isDragging.current = false;
       viewport.style.cursor = 'grab';
     };
 
     viewport.addEventListener("wheel", handleWheel, { passive: false });
-    viewport.addEventListener("mousedown", handleMouseDown);
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
+    viewport.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
 
     return () => {
       viewport.removeEventListener("wheel", handleWheel);
-      viewport.removeEventListener("mousedown", handleMouseDown);
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
+      viewport.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
     };
   }, []);
 
@@ -999,7 +1015,7 @@ export default function App() {
           <motion.div 
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="max-w-5xl w-full bg-[#fdfaf2] border-4 border-black rounded-3xl p-8 sm:p-12 text-center shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden my-4"
+            className="max-w-4xl w-full bg-[#fdfaf2] border-4 border-black rounded-2xl md:rounded-3xl p-5 sm:p-10 md:p-12 text-center shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] md:shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden my-auto"
           >
             {/* Playful neobrutalist corner background strips */}
             <div className="absolute top-0 right-0 w-24 h-6 bg-yellow-400 border-b-4 border-l-4 border-black -skew-x-12 transform translate-x-4 -translate-y-1" />
@@ -1008,59 +1024,59 @@ export default function App() {
             <motion.h1 
               initial={{ y: -10 }}
               animate={{ y: 0 }}
-              className="text-4xl sm:text-6xl font-black text-black tracking-tight uppercase"
+              className="text-2xl sm:text-4xl md:text-6xl font-black text-black tracking-tight uppercase"
             >
               Pick Your Side
             </motion.h1>
-            <p className="text-black/60 text-xs mt-2 uppercase tracking-widest font-mono font-bold mb-12">
+            <p className="text-black/60 text-[10px] sm:text-xs mt-1 sm:mt-2 uppercase tracking-widest font-mono font-bold mb-6 sm:mb-10">
               ⚡ Territory War Grid v2.0 ⚡
             </p>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
+            <div className="grid grid-cols-2 md:grid-cols-2 gap-3 sm:gap-6 md:gap-8 relative z-10 max-w-3xl mx-auto">
               <button 
                 onClick={() => setUserRole('blue')}
-                className="group relative overflow-hidden bg-[#3b82f6] text-white border-4 border-black p-8 rounded-2xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:-translate-x-1 hover:shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] active:translate-y-1 active:translate-x-1 active:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] transition-all duration-150 cursor-pointer text-center flex flex-col items-center justify-center"
+                className="group relative overflow-hidden bg-[#3b82f6] text-white border-3 md:border-4 border-black p-3 sm:p-6 md:p-8 rounded-xl md:rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] md:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 hover:-translate-x-0.5 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] md:hover:shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:translate-x-0.5 active:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all duration-150 cursor-pointer text-center flex flex-col items-center justify-center w-full"
               >
-                <div className="mb-6 flex items-center justify-center h-80 w-80">
+                <div className="mb-3 sm:mb-6 flex items-center justify-center h-20 w-20 sm:h-56 sm:w-56 md:h-64 md:w-64">
                   <img 
                     src="https://lh3.googleusercontent.com/d/1SNCMihirT-5iX9Fp_AZTclJTJ0P5kae4" 
                     alt="Blue Stroller" 
-                    className="w-80 h-80 object-contain -rotate-90 group-hover:scale-105 transition-transform duration-150 drop-shadow-[8px_8px_0px_rgba(0,0,0,0.35)]"
+                    className="w-20 h-20 sm:w-56 sm:h-56 md:w-64 md:h-64 object-contain -rotate-90 group-hover:scale-105 transition-transform duration-150 drop-shadow-[4px_4px_0px_rgba(0,0,0,0.3)] sm:drop-shadow-[8px_8px_0px_rgba(0,0,0,0.35)]"
                     referrerPolicy="no-referrer"
                   />
                 </div>
-                <div className="text-3xl font-black tracking-tight">TEAM BLUE</div>
-                <div className="text-[11px] text-blue-100 font-bold uppercase tracking-wider font-mono mt-2">Strategic Defense</div>
+                <div className="text-[13px] sm:text-xl md:text-3xl font-black tracking-tight leading-none">TEAM BLUE</div>
+                <div className="text-[8px] sm:text-[10px] md:text-[11px] text-blue-100 font-bold uppercase tracking-wider font-mono mt-1 sm:mt-2 leading-none">Strategic Defense</div>
               </button>
               
               <button 
                 onClick={() => setUserRole('red')}
-                className="group relative overflow-hidden bg-[#ef4444] text-white border-4 border-black p-8 rounded-2xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:-translate-x-1 hover:shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] active:translate-y-1 active:translate-x-1 active:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] transition-all duration-150 cursor-pointer text-center flex flex-col items-center justify-center"
+                className="group relative overflow-hidden bg-[#ef4444] text-white border-3 md:border-4 border-black p-3 sm:p-6 md:p-8 rounded-xl md:rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] md:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 hover:-translate-x-0.5 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] md:hover:shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:translate-x-0.5 active:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all duration-150 cursor-pointer text-center flex flex-col items-center justify-center w-full"
               >
-                <div className="mb-6 flex items-center justify-center h-80 w-80">
+                <div className="mb-3 sm:mb-6 flex items-center justify-center h-20 w-20 sm:h-56 sm:w-56 md:h-64 md:w-64">
                   <img 
                     src="https://lh3.googleusercontent.com/d/1MBQVettULlTDGfz3HDLUojv_4kj7dlkx" 
                     alt="Red Stroller" 
-                    className="w-80 h-80 object-contain -rotate-90 group-hover:scale-105 transition-transform duration-150 drop-shadow-[8px_8px_0px_rgba(0,0,0,0.35)]"
+                    className="w-20 h-20 sm:w-56 sm:h-56 md:w-64 md:h-64 object-contain -rotate-90 group-hover:scale-105 transition-transform duration-150 drop-shadow-[4px_4px_0px_rgba(0,0,0,0.3)] sm:drop-shadow-[8px_8px_0px_rgba(0,0,0,0.35)]"
                     referrerPolicy="no-referrer"
                   />
                 </div>
-                <div className="text-3xl font-black tracking-tight">TEAM RED</div>
-                <div className="text-[11px] text-red-100 font-bold uppercase tracking-wider font-mono mt-2">Aggressive Maneuver</div>
+                <div className="text-[13px] sm:text-xl md:text-3xl font-black tracking-tight leading-none">TEAM RED</div>
+                <div className="text-[8px] sm:text-[10px] md:text-[11px] text-red-100 font-bold uppercase tracking-wider font-mono mt-1 sm:mt-2 leading-none">Aggressive Maneuver</div>
               </button>
             </div>
             
-            <div className="mt-12 flex flex-col sm:flex-row gap-4 items-center justify-center relative z-10 w-full max-w-md mx-auto">
+            <div className="mt-6 sm:mt-10 flex flex-col sm:flex-row gap-3 items-center justify-center relative z-10 w-full max-w-md mx-auto">
               <button 
                 onClick={() => setUserRole('admin')}
-                className="w-full sm:w-auto px-6 py-3 bg-yellow-300 text-black border-2 border-black rounded-xl text-xs font-black uppercase tracking-widest hover:bg-yellow-400 transition-colors shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:translate-x-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+                className="w-full sm:w-auto px-4 py-2 bg-yellow-300 text-black border-2 border-black rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest hover:bg-yellow-400 transition-colors shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:translate-x-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
               >
                 🕶️ Spectate / Admin
               </button>
               {!user && (
                 <button 
                   onClick={handleGuestLogin}
-                  className="w-full sm:w-auto px-6 py-3 bg-green-300 text-black border-2 border-black rounded-xl text-xs font-black uppercase tracking-widest hover:bg-green-400 transition-colors shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:translate-x-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+                  className="w-full sm:w-auto px-4 py-2 bg-green-300 text-black border-2 border-black rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest hover:bg-green-400 transition-colors shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:translate-x-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
                 >
                   🎮 Play as Guest
                 </button>
@@ -1390,8 +1406,8 @@ export default function App() {
         </div>
       )}
 
-      {/* FIXED BOTTOM HUD */}
-      <div className="fixed bottom-0 left-0 w-full h-24 bg-[#fcfaf4] border-t-4 border-black flex items-center justify-between px-8 z-50 shadow-[0_-5px_0px_0px_rgba(0,0,0,1)] text-black">
+      {/* FIXED BOTTOM HUD (DESKTOP) */}
+      <div className="hidden md:flex fixed bottom-0 left-0 w-full h-24 bg-[#fcfaf4] border-t-4 border-black items-center justify-between px-8 z-50 shadow-[0_-5px_0px_0px_rgba(0,0,0,1)] text-black">
         
         {/* Blue Side HUD */}
         <div className={`flex items-center gap-4 transition-opacity ${!canControl('blue') ? 'opacity-30 pointer-events-none grayscale' : ''}`}>
@@ -1534,7 +1550,7 @@ export default function App() {
         </div>
 
         {/* Global Log Toggle */}
-        <div className="fixed right-6 bottom-28 z-[60] flex flex-col items-end gap-2.5">
+        <div className="fixed right-4 md:right-6 bottom-48 md:bottom-28 z-[60] flex flex-col items-end gap-2.5">
            <button 
              onClick={() => setIsLogOpen(!isLogOpen)}
              className="bg-white border-3 border-black px-4 py-2 rounded-full text-black hover:-translate-y-0.5 active:translate-y-0.5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-transform cursor-pointer"
@@ -1548,7 +1564,7 @@ export default function App() {
              <motion.div 
                initial={{ opacity: 0, y: 10, scale: 0.95 }}
                animate={{ opacity: 1, y: 0, scale: 1 }}
-               className="w-72 h-64 bg-[#fffef4] border-3 border-black rounded-2xl p-4 overflow-y-auto font-mono text-[9px] shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] text-black text-left"
+               className="w-72 max-w-[calc(100vw-32px)] h-60 md:h-64 bg-[#fffef4] border-3 border-black rounded-2xl p-4 overflow-y-auto font-mono text-[9px] shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] text-black text-left"
              >
                <div className="text-black/50 uppercase tracking-widest font-black mb-2.5 border-b-2 border-black pb-1.5 flex justify-between">
                  <span>🌐 Activity Log</span>
@@ -1667,8 +1683,234 @@ export default function App() {
         </div>
       </div>
 
-      {/* Movement Guides & Dev Mode Toggle */}
-      <div className="fixed top-8 left-8 flex flex-col gap-3 z-50">
+      {/* MOBILE-ONLY BOTTOM HUD (Glow/Neobrutalist buttons drawer) */}
+      <div className="flex md:hidden fixed bottom-0 left-0 w-full bg-[#fcfaf4] border-t-4 border-black z-50 p-3 shadow-[0_-4px_0px_0px_rgba(0,0,0,1)] text-black flex-col select-none font-sans">
+        {/* Dynamic Controls Header (Active Side Toggler / Indicator & Token Display) */}
+        <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-black/10">
+          <div className="flex gap-2 items-center">
+            {(userRole === 'admin' || userRole === 'none' || isDevMode) ? (
+              <div className="flex border-2 border-black rounded-xl overflow-hidden bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                <button 
+                  type="button"
+                  onClick={() => setMobileActiveSide('blue')}
+                  className={`px-3 py-1 text-[10px] font-black uppercase transition-all cursor-pointer ${mobileActiveSide === 'blue' ? 'bg-[#3b82f6] text-white' : 'bg-white text-[#3b82f6]'}`}
+                >
+                  💙 Blue
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setMobileActiveSide('red')}
+                  className={`px-3 py-1 text-[10px] font-black uppercase transition-all cursor-pointer ${mobileActiveSide === 'red' ? 'bg-[#ef4444] text-white' : 'bg-white text-[#ef4444]'}`}
+                >
+                  ❤️ Red
+                </button>
+              </div>
+            ) : (
+              <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-xl border-2 border-black inline-block shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${
+                mobileActiveSide === 'blue' ? 'bg-[#ebf8ff] text-[#2b6cb0] border-[#3b82f6]' : 'bg-[#fff5f5] text-[#c53030] border-[#ef4444]'
+              }`}>
+                {mobileActiveSide === 'blue' ? '💙 Blue Team' : '❤️ Red Team'}
+              </span>
+            )}
+            
+            {/* Sprint Active Badge */}
+            {((mobileActiveSide === 'blue' ? sprintBlue : sprintRed) > Date.now()) && (
+              <span className="text-[8px] px-2 py-0.5 rounded bg-cyan-100 text-[#0891b2] border-2 border-cyan-400 font-black animate-pulse uppercase tracking-wide">
+                ⚡ SPRINT
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-mono font-black border-2 border-black px-2 py-0.5 rounded-xl bg-white shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">
+              🪙 {user ? `${profile?.currentTokens || 0} T` : 'Base'}
+            </span>
+            
+            <button 
+              type="button"
+              onClick={handleReset}
+              className="w-6.5 h-6.5 flex items-center justify-center bg-rose-200 hover:bg-rose-300 border-2 border-black rounded-lg shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 text-black cursor-pointer"
+              title="Reset Game"
+            >
+              <RotateCcw size={11} className="stroke-[3]" />
+            </button>
+            
+            <div className="flex items-center border-2 border-black bg-white rounded-lg shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] overflow-hidden h-6.5">
+              <button 
+                type="button"
+                onClick={() => handleZoom('in')}
+                className="w-5.5 h-full flex items-center justify-center bg-gray-50 border-r border-black cursor-pointer font-black text-xs"
+              >
+                +
+              </button>
+              <button 
+                type="button"
+                onClick={() => handleZoom('out')}
+                className="w-5.5 h-full flex items-center justify-center bg-gray-50 cursor-pointer font-black text-xs"
+              >
+                -
+              </button>
+            </div>
+
+            <button 
+              type="button"
+              onClick={() => setIsPurchaseModalOpen(true)}
+              className="text-[9px] bg-yellow-300 hover:bg-yellow-400 text-black border-2 border-black font-black rounded-lg px-2 py-0.5 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] uppercase cursor-pointer"
+            >
+              BUY
+            </button>
+          </div>
+        </div>
+
+        {/* Dedicated Row if Mines on Field */}
+        {mines.length > 0 && (
+          <div className="flex items-center justify-between gap-2 mb-2 p-1.5 bg-[#fdfcfa] border-2 border-dashed border-amber-400 rounded-xl">
+            <span className="text-[9px] font-black uppercase text-amber-900 flex items-center gap-1">⚠️ MINES RECLAIM:</span>
+            {!minesRevealed ? (
+              <button 
+                type="button"
+                onClick={() => handleRevealMines(mobileActiveSide)}
+                className="px-3 py-1 bg-amber-200 hover:bg-amber-300 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 cursor-pointer flex items-center gap-1.5"
+              >
+                <span>👁️</span> REVEAL (100)
+              </button>
+            ) : (
+              <button 
+                type="button"
+                onClick={() => handleClearMines(mobileActiveSide)}
+                className="px-3 py-1 bg-rose-200 hover:bg-rose-300 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 cursor-pointer flex items-center gap-1.5"
+              >
+                <span>🧹</span> CLEAR ALL (50)
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* 2 Rows of 4 Buttons (Compact Touch Grid) */}
+        <div className={`grid grid-cols-4 gap-2 ${!canControl(mobileActiveSide) ? 'opacity-30 pointer-events-none grayscale' : ''}`}>
+          <button 
+            type="button"
+            onClick={() => setActiveModal({ side: mobileActiveSide, type: 'move' })}
+            className={`py-2 px-1 flex flex-col items-center justify-center border-2 border-black rounded-xl text-white font-black uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer text-[10px] tracking-tight ${
+              mobileActiveSide === 'blue' ? 'bg-[#3b82f6] shadow-[#1d4ed8_2px_2px_0px_0px]' : 'bg-[#ef4444] shadow-[#b91c1c_2px_2px_0px_0px]'
+            }`}
+          >
+            <span className="text-sm">💥</span>
+            <span>MOVE</span>
+          </button>
+          
+          <button 
+            type="button"
+            onClick={() => setActiveModal({ side: mobileActiveSide, type: 'grid' })}
+            className="py-2 px-1 flex flex-col items-center justify-center bg-blue-105 hover:bg-blue-110 border-2 border-black rounded-xl text-black font-black uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer text-[10px] tracking-tight"
+          >
+            <span className="text-sm">♟️</span>
+            <span>PUSH</span>
+          </button>
+
+          <button 
+            type="button"
+            onClick={() => setActiveModal({ side: mobileActiveSide, type: 'teleport' })}
+            className="py-2 px-1 flex flex-col items-center justify-center bg-purple-200 hover:bg-purple-300 border-2 border-black rounded-xl text-black font-black uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer text-[10px] tracking-tight"
+          >
+            <span className="text-sm">🔮</span>
+            <span>TELE</span>
+          </button>
+
+          <button 
+            type="button"
+            onClick={() => setActiveModal({ side: mobileActiveSide, type: 'wall' })}
+            className="py-2 px-1 flex flex-col items-center justify-center bg-slate-200 hover:bg-slate-300 border-2 border-black rounded-xl text-black font-black uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer text-[10px] tracking-tight"
+          >
+            <span className="text-sm">🚧</span>
+            <span>WALL</span>
+          </button>
+
+          <button 
+            type="button"
+            onClick={() => setActiveModal({ side: mobileActiveSide, type: 'mine' })}
+            className="py-2 px-1 flex flex-col items-center justify-center bg-orange-200 hover:bg-orange-300 border-2 border-black rounded-xl text-black font-black uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer text-[10px] tracking-tight"
+          >
+            <span className="text-sm">💣</span>
+            <span>MINE</span>
+          </button>
+
+          <button 
+            type="button"
+            onClick={() => setActiveModal({ side: mobileActiveSide, type: 'jackpot' })}
+            className="py-2 px-1 flex flex-col items-center justify-center bg-yellow-250 hover:bg-yellow-300 border-2 border-black rounded-xl text-black font-black uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer text-[10px] tracking-tight"
+          >
+            <span className="text-sm">🎰</span>
+            <span>LUCK</span>
+          </button>
+
+          <button 
+            type="button"
+            onClick={() => handleSprint(mobileActiveSide)}
+            className="py-2 px-1 flex flex-col items-center justify-center bg-cyan-250 hover:bg-cyan-300 border-2 border-black rounded-xl text-black font-black uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer text-[10px] tracking-tight"
+          >
+            <span className="text-sm">🏃</span>
+            <span>RUN</span>
+          </button>
+
+          <button 
+            type="button"
+            onClick={() => setActiveModal({ side: mobileActiveSide, type: 'slingshot' })}
+            className="py-2 px-1 flex flex-col items-center justify-center bg-rose-200 hover:bg-rose-300 border-2 border-black rounded-xl text-black font-black uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer animate-pulse text-[10px] tracking-tight"
+          >
+            <span className="text-sm">🏹</span>
+            <span>SLING</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile-only Compact Header Bar */}
+      <div className="block md:hidden fixed top-0 left-0 w-full bg-[#fcfaf4] border-b-4 border-black z-50 px-4 py-3 text-black shadow-[0_3px_0px_0px_rgba(0,0,0,1)] font-sans">
+        <div className="flex items-center justify-between">
+          {/* User profile & Token status */}
+          <div className="flex items-center gap-2">
+            {user ? (
+              <div className="flex items-center gap-1.5 bg-white border-2 border-black rounded-xl p-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                <img src={user.photoURL || ""} alt="" className="w-5 h-5 rounded border border-black" referrerPolicy="no-referrer" />
+                <span className="text-[9px] bg-green-200 text-black border border-black font-black uppercase tracking-wider px-1.5 rounded-sm font-mono">{profile?.currentTokens || 0} Tokens</span>
+              </div>
+            ) : (
+              <button 
+                onClick={handleLogin}
+                className="px-2.5 py-1.5 bg-yellow-300 text-black text-[9px] font-black uppercase tracking-wider rounded-xl border-2 border-black shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+              >
+                Sign In
+              </button>
+            )}
+
+            {/* Dev mode toggle if needed */}
+            <button
+              onClick={() => setIsDevMode(prev => !prev)}
+              className={`px-2 py-1 border-2 border-black rounded-lg text-[8px] font-black uppercase tracking-tighter ${isDevMode ? 'bg-[#ef4444] text-white animate-pulse' : 'bg-white text-black'}`}
+            >
+              {isDevMode ? "DEV ON" : "DEV OFF"}
+            </button>
+          </div>
+
+          {/* Charity and leaderboard trigger */}
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setIsLeaderboardOpen(true)}
+              className="bg-yellow-300 border-2 border-black px-2.5 py-1 rounded-xl flex items-center gap-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 text-black font-black text-[9.5px] uppercase cursor-pointer"
+            >
+              <span>💝</span> ${totalRaised.toLocaleString()}
+            </button>
+            {user && (
+              <button onClick={handleLogout} className="text-gray-500 hover:text-red-500 border border-black p-1 bg-white rounded-lg cursor-pointer" title="Sign Out">
+                <RotateCcw size={12}/>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Movement Guides & Dev Mode Toggle (Desktop only) */}
+      <div className="hidden md:flex fixed top-8 left-8 flex-col gap-3 z-50">
         <div className="flex flex-col gap-2 text-black text-[10px] font-mono bg-yellow-200 border-3 border-black p-4 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] font-bold">
           <p className="uppercase font-black text-xs border-b border-black pb-1.5 mb-1 tracking-tight">🎮 CONTROLS</p>
           <p><span className="text-blue-600 font-extrabold">BLUE TEAM:</span> W, A, S, D Keyboards</p>
@@ -1687,8 +1929,8 @@ export default function App() {
         </button>
       </div>
 
-      {/* Charity Counter */}
-      <div className="fixed top-8 right-8 z-50 flex flex-col items-end gap-3">
+      {/* Charity Counter (Desktop only) */}
+      <div className="hidden md:flex fixed top-8 right-8 z-50 flex-col items-end gap-3">
         <div className="flex items-center gap-4">
           {/* Profile / Login */}
           <div className="bg-[#fcfaf4] border-3 border-black rounded-2xl p-2.5 flex items-center gap-3 pr-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] pointer-events-auto">
@@ -1727,10 +1969,12 @@ export default function App() {
             </div>
           </button>
         </div>
+      </div>
 
-        {/* Dynamic Auth Troubleshooting Instructions */}
-        {loginError && (
-          <div className="max-w-[320px] bg-[#fffbf2] border-3 border-black text-black text-xs p-4 rounded-2xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-3 pointer-events-auto text-left">
+      {/* Dynamic Auth Troubleshooting Instructions (Responsive overlay) */}
+      {loginError && (
+        <div className="fixed top-16 md:top-24 right-4 md:right-8 z-[201] pointer-events-auto text-left max-w-[calc(100vw-32px)] sm:max-w-[320px]">
+          <div className="bg-[#fffbf2] border-3 border-black p-4 rounded-2xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] space-y-3 text-black">
             <div className="flex justify-between items-center border-b-2 border-black pb-2">
               <span className="font-extrabold text-red-600 uppercase tracking-wider text-[11px] flex items-center gap-1">⚠️ SIGN IN NOTICE</span>
               <button 
@@ -1780,16 +2024,16 @@ export default function App() {
               </button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Leaderboard Modal */}
       {isLeaderboardOpen && (
-        <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 text-black">
+        <div className="fixed inset-0 z-[400] flex items-start md:items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto text-black py-6">
           <motion.div 
             initial={{ scale: 0.9, y: 15 }}
             animate={{ scale: 1, y: 0 }}
-            className="max-w-md w-full bg-[#fdfdfc] border-4 border-black rounded-3xl overflow-hidden shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]"
+            className="max-w-md w-full bg-[#fdfdfc] border-4 border-black rounded-3xl overflow-hidden shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] my-auto"
           >
             <div className="p-6 border-b-4 border-black bg-yellow-300 flex justify-between items-center">
               <div>
@@ -1827,11 +2071,11 @@ export default function App() {
 
       {/* Purchase Modal */}
       {isPurchaseModalOpen && (
-        <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/70 backdrop-blur-sm overflow-y-auto p-4 text-black">
+        <div className="fixed inset-0 z-[400] flex items-start md:items-center justify-center bg-black/70 backdrop-blur-sm overflow-y-auto p-4 text-black py-8">
           <motion.div 
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="max-w-4xl w-full bg-[#f0f0f0] border-4 border-black rounded-3xl p-6 sm:p-8 relative shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]"
+            className="max-w-4xl w-full bg-[#f0f0f0] border-4 border-black rounded-3xl p-6 sm:p-8 relative shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] my-auto"
           >
             {/* Header section closely matching pricing-container */}
             <div className="text-center mb-8 relative z-10">
