@@ -588,7 +588,7 @@ export default function App() {
       return false;
     }
     if (profile.currentTokens < cost) {
-      addLog("Not enough tokens! Buy more to support charity.");
+      addLog(`Not enough tokens to spend ${cost} tokens! Buy more to support charity.`);
       setIsPurchaseModalOpen(true);
       return false;
     }
@@ -611,9 +611,20 @@ export default function App() {
         currentTokens: increment(-cost),
         totalDonated: increment(cost)
       });
-    } catch (e) {
+    } catch (e: any) {
+      const errMsg = e.message || String(e);
       handleFirestoreError(e, 'update', `users/${user.uid}`);
-      return false;
+      addLog(`⚠️ Token DB update failed: ${errMsg.slice(0, 75)}. Operating in client fallback mode!`);
+      
+      // Resilient Fallback: Set tokens in local state memory so the player is never locked out of gameplay functions!
+      setProfile(prev => prev ? {
+        ...prev,
+        currentTokens: Math.max(0, prev.currentTokens - cost),
+        totalDonated: prev.totalDonated + cost
+      } : null);
+      setTotalRaised(prev => prev + cost);
+      
+      return true;
     }
 
     // Global charity counter also goes up
