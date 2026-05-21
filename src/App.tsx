@@ -38,6 +38,8 @@ export default function App() {
   const [isDevMode, setIsDevMode] = useState(false);
   const [stripeConfig, setStripeConfig] = useState<{ stripeEnabled: boolean, hasSecretKey: boolean } | null>(null);
   const [paymentSuccessMessage, setPaymentSuccessMessage] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [paymentLoading, setPaymentLoading] = useState<boolean>(false);
   
   // Fetch Stripe Configuration Status on load
   useEffect(() => {
@@ -124,18 +126,38 @@ export default function App() {
 
   const buyTokens = async (amount: number) => {
     if (!user) return;
+    setPaymentLoading(true);
+    setPaymentError(null);
     try {
       const response = await fetch("/api/create-checkout-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tokens: amount, userId: user.uid }),
       });
+
+      if (!response.ok) {
+        throw new Error(`Server returned status ${response.status}. The server may temporarily be restarting after saving Stripe credentials. Please try again in 5-10 seconds!`);
+      }
+
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("Server responded with HTML page instead of JSON. The backend is currently restarting to load your real Stripe keys. Please wait 10 seconds and try again!");
+      }
+
       const session = await response.json();
+      if (session.error) {
+        throw new Error(session.error);
+      }
       if (session.url) {
         window.location.href = session.url;
+      } else {
+        throw new Error("Could not construct payment checkout session URL.");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Payment failed", err);
+      setPaymentError(err.message || String(err));
+    } finally {
+      setPaymentLoading(false);
     }
   };
 
@@ -529,8 +551,12 @@ export default function App() {
       addLog(`[DEV MODE] Bypassed spending ${cost} tokens for ${side} team`);
       return true;
     }
-    if (!user || !profile) {
+    if (!user) {
       addLog("You must be logged in to spend tokens!");
+      return false;
+    }
+    if (!profile) {
+      addLog("Your profile is still loading or offline. Please wait or try again!");
       return false;
     }
     if (profile.currentTokens < cost) {
@@ -2089,16 +2115,46 @@ export default function App() {
                 ⭐ Each token is a $1 direct contribution to humanitarian aid channels ⭐
               </p>
               {stripeConfig && (
-                <div className="flex justify-center mt-4">
+                <div className="flex flex-col items-center gap-2 mt-4">
                   {stripeConfig.stripeEnabled ? (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] sm:text-xs font-mono font-black border-2 border-emerald-500 uppercase tracking-wide shadow-[2px_2px_0px_0px_rgba(16,185,129,1)] animate-pulse">
                       ● SECURE REAL STRIPE PAYMENTS ENABLED
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 text-amber-850 text-[10px] sm:text-xs font-mono font-black border-2 border-amber-500 uppercase tracking-wide shadow-[2px_2px_0px_0px_rgba(245,158,11,1)]">
-                      ⚡ DEV SANDBOX TEST MODE ACTIVE (SIMULATE CHECKOUT FOR FREE)
-                    </span>
+                    <>
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 text-amber-850 text-[10px] sm:text-xs font-mono font-black border-2 border-amber-500 uppercase tracking-wide shadow-[2px_2px_0px_0px_rgba(245,158,11,1)]">
+                        ⚡ DEV SANDBOX TEST MODE ACTIVE (SIMULATE CHECKOUT FOR FREE)
+                      </span>
+                      <div className="max-w-xl text-[#854d0e] bg-[#fef9c3] border-2 border-[#ca8a04] px-4 py-2.5 rounded-2xl text-[10px] sm:text-xs font-medium text-center space-y-1 mt-2 shadow-[3px_3px_0px_0px_rgba(202,138,4,1)] relative z-10">
+                        <p className="font-extrabold uppercase tracking-tight">🛠️ How to connect your actual Stripe account:</p>
+                        <p className="opacity-90">1. Go to your **Stripe Dashboard** &rarr; Developers &rarr; API keys, and copy your **Secret key** (looks like <code className="bg-black/10 px-1 rounded font-mono text-[9px] sm:text-[10px]">sk_test_...</code>).</p>
+                        <p className="opacity-90">2. Open the **Settings menu** (gear icon) in the bottom-left or top-right of your **AI Studio panel**.</p>
+                        <p className="opacity-90">3. Set <code className="bg-black/10 px-1 rounded font-mono text-[9px] sm:text-[10px]">STRIPE_SECRET_KEY</code> with your copied key. The server will restart automatically with real checkouts enabled!</p>
+                      </div>
+                    </>
                   )}
+                </div>
+              )}
+              
+              {paymentError && (
+                <div className="max-w-xl mx-auto mt-4 bg-red-50 border-2 border-red-500 text-red-900 p-4 rounded-2xl shadow-[4px_4px_0px_0px_rgba(239,68,68,1)] text-left relative z-10 text-xs font-bold font-mono">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="font-black text-xs uppercase flex items-center gap-1.5 text-red-600">⚠️ TRANSACTION ERROR</span>
+                    <button 
+                      onClick={() => setPaymentError(null)} 
+                      type="button" 
+                      className="text-red-500 hover:text-red-700 font-bold bg-white border border-red-400 text-[10px] px-1.5 py-0.5 rounded shadow cursor-pointer active:translate-y-0.5"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                  <p className="opacity-95">{paymentError}</p>
+                </div>
+              )}
+
+              {paymentLoading && (
+                <div className="max-w-xl mx-auto mt-4 bg-blue-50 border-3 border-blue-500 text-blue-900 px-4 py-3 rounded-2xl shadow-[4px_4px_0px_0px_rgba(59,130,246,1)] text-center relative z-10 text-xs font-black uppercase tracking-wider animate-pulse flex items-center justify-center gap-2">
+                  <span className="animate-spin text-base">🌀</span> Launching Secure Checkout Terminal...
                 </div>
               )}
             </div>
