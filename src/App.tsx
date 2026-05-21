@@ -202,6 +202,7 @@ export default function App() {
             };
             setDoc(userRef, newProfile);
             setProfile(newProfile as any);
+            setPaymentSuccessMessage("Welcome to Baby Push! You have been credited with 100 courtesy tokens as a welcome gift! Go control the strollers or deploy tactical support! 🍼🛡️");
           }
         }, (err: any) => {
           console.error("Error subscribing to user profile:", err);
