@@ -131,35 +131,6 @@ export default function App() {
   const initialRed = { x: 149, y: 195 };
 
   // Login logic
-  const handleGuestLogin = () => {
-    const guestId = `guest-${Math.floor(Math.random() * 1000000)}`;
-    setUser({
-      uid: guestId,
-      displayName: "Guest Challenger",
-      photoURL: "https://lh3.googleusercontent.com/d/1SNCMihirT-5iX9Fp_AZTclJTJ0P5kae4",
-      email: "guest@local.sim",
-      emailVerified: false,
-      isAnonymous: true,
-      metadata: {},
-      providerData: [],
-      refreshToken: "",
-      tenantId: null,
-      delete: async () => {},
-      getIdToken: async () => "",
-      getIdTokenResult: async () => ({} as any),
-      reload: async () => {},
-      toJSON: () => ({})
-    } as any);
-    setProfile({
-      displayName: "Guest Challenger",
-      photoURL: "https://lh3.googleusercontent.com/d/1SNCMihirT-5iX9Fp_AZTclJTJ0P5kae4",
-      totalDonated: 0,
-      currentTokens: 500
-    } as any);
-    setLoginError(null);
-    addLog("Guest Challenger joined the battle locally!");
-  };
-
   const handleLogin = async () => {
     setLoginError(null);
     const provider = new GoogleAuthProvider();
@@ -191,45 +162,22 @@ export default function App() {
     setPaymentLoading(true);
     setPaymentError(null);
     try {
-      const response = await fetch("/api/create-checkout-session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tokens: amount, userId: user.uid }),
+      // Direct Firestore transaction updates for instant free tokens in production mode!
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, {
+        currentTokens: increment(amount),
+        totalDonated: increment(amount)
+      });
+      
+      // Increment global charity collection
+      const gameRef = doc(db, "games", GAME_ID);
+      await updateDoc(gameRef, {
+        totalRaised: increment(amount)
       });
 
-      const contentType = response.headers.get("content-type");
-      const isJson = contentType && contentType.includes("application/json");
-
-      if (!response.ok) {
-        let errMsg = `Server returned status ${response.status}.`;
-        if (isJson) {
-          try {
-            const errData = await response.json();
-            if (errData && errData.error) {
-              errMsg = `Payment failed: ${errData.error}`;
-            }
-          } catch (_) {}
-          throw new Error(errMsg);
-        } else {
-          throw new Error(`${errMsg} The server may temporarily be restarting after saving Stripe credentials. Please try again in 5-10 seconds!`);
-        }
-      }
-
-      if (!isJson) {
-        throw new Error("Server responded with HTML page instead of JSON. The backend is currently restarting to load your real Stripe keys. Please wait 10 seconds and try again!");
-      }
-
-      const session = await response.json();
-      if (session.error) {
-        throw new Error(session.error);
-      }
-      if (session.url) {
-        window.location.href = session.url;
-      } else {
-        throw new Error("Could not construct payment checkout session URL.");
-      }
+      setPaymentSuccessMessage(`✨ Refilled +${amount} Tokens successfully for FREE! Thank you for supporting the humanitarian war game. Your contribution is logged! 🏆`);
     } catch (err: any) {
-      console.error("Payment failed", err);
+      console.error("Direct refilling failed", err);
       setPaymentError(err.message || String(err));
     } finally {
       setPaymentLoading(false);
@@ -424,7 +372,7 @@ export default function App() {
   };
 
   const canControl = (side: 'blue' | 'red') => {
-    if (isDevMode) return true;
+    if (!user) return false;
     if (userRole === 'admin') return true;
     return userRole === side;
   };
@@ -642,7 +590,10 @@ export default function App() {
 
   // Keyboard controls
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") {
+        return;
+      }
       const key = e.key.toLowerCase();
       
       // Blue controls (WASD)
@@ -663,6 +614,9 @@ export default function App() {
             updateFirebase({ bluePos: initialBlue });
             return;
           }
+
+          const success = await spendTokens('blue', 1);
+          if (!success) return;
 
           const newTrail = [...blueTrail, `${bluePos.x},${bluePos.y}`];
           setBluePos(nextPos);
@@ -694,6 +648,9 @@ export default function App() {
             updateFirebase({ redPos: initialRed });
             return;
           }
+
+          const success = await spendTokens('red', 1);
+          if (!success) return;
           
           const newTrail = [...redTrail, `${redPos.x},${redPos.y}`];
           setRedPos(nextPos);
@@ -710,13 +667,9 @@ export default function App() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [size, bluePos, blueRot, blueTrail, redPos, redRot, redTrail, walls, mines, isDevMode, userRole]);
+  }, [size, bluePos, blueRot, blueTrail, redPos, redRot, redTrail, walls, mines, userRole, user, profile]);
 
   const spendTokens = async (side: 'blue' | 'red', cost: number) => {
-    if (isDevMode) {
-      addLog(`[DEV MODE] Bypassed spending ${cost} tokens for ${side} team`);
-      return true;
-    }
     if (!user) {
       addLog("You must be logged in to spend tokens!");
       return false;
@@ -729,18 +682,6 @@ export default function App() {
       addLog(`Not enough tokens to spend ${cost} tokens! Buy more to support charity.`);
       setIsPurchaseModalOpen(true);
       return false;
-    }
-
-    if (user.uid.startsWith("guest-")) {
-      setProfile(prev => prev ? {
-        ...prev,
-        currentTokens: Math.max(0, prev.currentTokens - cost),
-        totalDonated: prev.totalDonated + cost
-      } : null);
-      
-      // Update global raised count locally too so guests see their charity donations tick up!
-      setTotalRaised(prev => prev + cost);
-      return true;
     }
 
     const userRef = doc(db, "users", user.uid);
@@ -1221,6 +1162,70 @@ export default function App() {
     await updateFirebase(updates);
   };
 
+  if (!user) {
+    return (
+      <div 
+        className="w-screen h-screen overflow-hidden bg-[#eae6dc] flex items-center justify-center relative font-sans p-4"
+        style={{
+          backgroundImage: 'radial-gradient(#1e1a15 8%, transparent 8%)',
+          backgroundSize: '24px 24px'
+        }}
+      >
+        <motion.div 
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="max-w-md w-full bg-[#fdfaf2] border-4 border-black rounded-3xl p-6 sm:p-10 text-center shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden"
+        >
+          {/* Decorative design banners */}
+          <div className="absolute top-0 right-0 w-24 h-6 bg-yellow-400 border-b-4 border-l-4 border-black -skew-x-12 transform translate-x-4 -translate-y-1" />
+          <div className="absolute bottom-0 left-0 w-28 h-8 bg-rose-400 border-t-4 border-r-4 border-black -skew-x-12 transform -translate-x-4 translate-y-1" />
+
+          {/* Icon/Logo */}
+          <div className="text-6xl mb-4 sm:mb-6 select-none animate-pulse">👶🍼🛡️</div>
+
+          <h1 className="text-3xl sm:text-4xl font-black text-black tracking-tight uppercase leading-none mb-2">
+            BABY PUSH!
+          </h1>
+          <p className="text-[10px] text-rose-500 font-extrabold uppercase tracking-widest font-mono mb-4">
+            🏆 Territory War Grid v2.0 🏆
+          </p>
+
+          <p className="text-xs sm:text-sm text-black/85 leading-relaxed font-semibold mb-6">
+            Drive smart strollers, paint the canvas with your signature team path, deploy strategic fortress barriers, and trigger slingshot launches in real-time.
+          </p>
+
+          <div className="bg-yellow-100 border-2 border-black p-4 rounded-2xl mb-6 text-left shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+            <h4 className="text-xs font-black uppercase text-black mb-1 flex items-center gap-1.5">
+              🎁 GIFT FOR NEW COMMANDERS
+            </h4>
+            <p className="text-[11px] font-bold text-black/80 leading-snug">
+              Every Commander gets <strong className="text-blue-600 font-black">100 Courtesy Tokens</strong> credited to their Google account on first login! No payment required.
+            </p>
+          </div>
+
+          <button 
+            onClick={handleLogin}
+            className="w-full py-4 bg-[#3b82f6] text-white font-black text-xs uppercase tracking-widest rounded-2xl border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer flex items-center justify-center gap-3"
+          >
+            <span className="text-lg">🔐</span>
+            <span>Sign In with Google Account</span>
+          </button>
+
+          {loginError && (
+            <div className="mt-6 bg-rose-50 border-2 border-rose-500 text-rose-950 p-4 rounded-xl text-left text-[11px] font-bold font-mono">
+              <span className="text-rose-600 uppercase font-black block mb-1">⚠️ SIGN IN ISSUE</span>
+              <p className="opacity-95 leading-normal">{loginError}</p>
+              <div className="border-t border-rose-300 mt-2.5 pt-2 text-[10px] space-y-1 text-black/70">
+                <p>Ensure this domain is authorized under <strong className="font-extrabold">Authorized Domains</strong> in your Firebase Console:</p>
+                <code className="block bg-white p-1 rounded border border-rose-200 text-[10px] text-center select-all mt-1">{window.location.hostname}</code>
+              </div>
+            </div>
+          )}
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
     <div 
       ref={viewportRef}
@@ -1295,14 +1300,6 @@ export default function App() {
               >
                 🕶️ Spectate / Admin
               </button>
-              {!user && (
-                <button 
-                  onClick={handleGuestLogin}
-                  className="w-full sm:w-auto px-4 py-2 bg-green-300 text-black border-2 border-black rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest hover:bg-green-400 transition-colors shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:translate-x-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
-                >
-                  🎮 Play as Guest
-                </button>
-              )}
             </div>
           </motion.div>
         </div>
@@ -2268,13 +2265,7 @@ export default function App() {
               </button>
             )}
 
-            {/* Dev mode toggle if needed */}
-            <button
-              onClick={() => setIsDevMode(prev => !prev)}
-              className={`px-2 py-1 border-2 border-black rounded-lg text-[8px] font-black uppercase tracking-tighter ${isDevMode ? 'bg-[#ef4444] text-white animate-pulse' : 'bg-white text-black'}`}
-            >
-              {isDevMode ? "DEV ON" : "DEV OFF"}
-            </button>
+            {/* User and Tokens indicators remaining cleanly */}
           </div>
 
           {/* Charity and leaderboard trigger */}
@@ -2304,24 +2295,13 @@ export default function App() {
         </div>
       </div>
 
-      {/* Movement Guides & Dev Mode Toggle (Desktop only) */}
+      {/* Movement Guides (Desktop only) */}
       <div className="hidden md:flex fixed top-8 left-8 flex-col gap-3 z-50">
         <div className="flex flex-col gap-2 text-black text-[10px] font-mono bg-yellow-200 border-3 border-black p-4 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] font-bold">
           <p className="uppercase font-black text-xs border-b border-black pb-1.5 mb-1 tracking-tight">🎮 CONTROLS</p>
           <p><span className="text-blue-600 font-extrabold">BLUE TEAM:</span> W, A, S, D Keyboards</p>
           <p><span className="text-red-600 font-extrabold">RED TEAM:</span> ARROW Keys</p>
         </div>
-        
-        <button
-          onClick={() => setIsDevMode(prev => !prev)}
-          className={`w-full px-4 py-2.5 border-3 border-black text-black text-[9px] font-black uppercase tracking-wider rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:translate-x-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-            isDevMode 
-              ? 'bg-rose-400 text-black animate-pulse font-mono' 
-              : 'bg-white text-black hover:bg-gray-100 font-mono'
-          }`}
-        >
-          {isDevMode ? "⚡ DEV MODE MATCH (ON)" : "⚙️ ENABLE TESTING DEV MODE"}
-        </button>
       </div>
 
       {/* Charity Counter (Desktop only) */}
@@ -2415,19 +2395,6 @@ export default function App() {
               >
                 Firebase Console Link &rarr;
               </a>
-
-              <div className="relative flex py-2 items-center">
-                <div className="flex-grow border-t border-black/20"></div>
-                <span className="flex-shrink mx-3 text-[9px] text-black/40 font-bold uppercase tracking-wider">OR</span>
-                <div className="flex-grow border-t border-black/20"></div>
-              </div>
-
-              <button
-                onClick={handleGuestLogin}
-                className="w-full px-4 py-2.5 bg-green-300 hover:bg-green-400 text-black border-2 border-black font-black text-[10px] uppercase rounded-xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer text-center"
-              >
-                🎮 Play as Local Guest (500 free tokens)
-              </button>
             </div>
           </div>
         </div>
