@@ -102,6 +102,7 @@ export default function App() {
   const [paymentSuccessMessage, setPaymentSuccessMessage] = useState<string | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [paymentLoading, setPaymentLoading] = useState<boolean>(false);
+  const [customTokenAmount, setCustomTokenAmount] = useState<string>("250");
   
   // Fetch Stripe Configuration Status on load
   useEffect(() => {
@@ -171,11 +172,12 @@ export default function App() {
       
       // Increment global charity collection
       const gameRef = doc(db, "games", GAME_ID);
-      await updateDoc(gameRef, {
+      await setDoc(gameRef, {
         totalRaised: increment(amount)
-      });
+      }, { merge: true });
 
       setPaymentSuccessMessage(`✨ Refilled +${amount} Tokens successfully for FREE! Thank you for supporting the humanitarian war game. Your contribution is logged! 🏆`);
+      setIsPurchaseModalOpen(false);
     } catch (err: any) {
       console.error("Direct refilling failed", err);
       setPaymentError(err.message || String(err));
@@ -476,10 +478,10 @@ export default function App() {
     const path = `games/${GAME_ID}`;
     try {
       const gameRef = doc(db, "games", GAME_ID);
-      await updateDoc(gameRef, {
+      await setDoc(gameRef, {
         ...updates,
         updatedAt: serverTimestamp()
-      });
+      }, { merge: true });
     } catch (e: any) {
       handleFirestoreError(e, 'update', path);
     }
@@ -709,10 +711,10 @@ export default function App() {
     // Global charity counter also goes up
     const gameRef = doc(db, "games", GAME_ID);
     try {
-      await updateDoc(gameRef, {
+      await setDoc(gameRef, {
         totalRaised: increment(cost),
         updatedAt: serverTimestamp()
-      });
+      }, { merge: true });
     } catch (e) {
       handleFirestoreError(e, 'update', `games/${GAME_ID}`);
       // Don't fail the whole action if global counter failed, but user tokens were taken
@@ -2255,6 +2257,12 @@ export default function App() {
               <div className="flex items-center gap-1.5 bg-white border-2 border-black rounded-xl p-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
                 <img src={user.photoURL || ""} alt="" className="w-5 h-5 rounded border border-black" referrerPolicy="no-referrer" />
                 <span className="text-[9px] bg-green-200 text-black border border-black font-black uppercase tracking-wider px-1.5 rounded-sm font-mono">{profile?.currentTokens || 0} Tokens</span>
+                <button 
+                  onClick={() => setIsPurchaseModalOpen(true)}
+                  className="text-[8px] bg-yellow-300 hover:bg-yellow-400 text-black border border-black font-black uppercase px-1 py-0.5 rounded cursor-pointer transition-all font-sans font-black"
+                >
+                  + BUY
+                </button>
               </div>
             ) : (
               <button 
@@ -2325,7 +2333,15 @@ export default function App() {
                 <img src={user.photoURL || ""} alt={user.displayName || ""} className="w-8 h-8 rounded-lg border-2 border-black" referrerPolicy="no-referrer" />
                 <div className="flex flex-col">
                   <span className="text-[10px] text-black font-extrabold tracking-tight leading-none mb-0.5">{user.displayName}</span>
-                  <span className="text-[8px] bg-green-200 text-black border border-black font-black uppercase tracking-wider px-1 rounded-sm">{profile?.currentTokens || 0} Tokens</span>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <span className="text-[8px] bg-green-200 text-black border border-black font-black uppercase tracking-wider px-1 rounded-sm">{profile?.currentTokens || 0} Tokens</span>
+                    <button 
+                      onClick={() => setIsPurchaseModalOpen(true)}
+                      className="text-[7.5px] bg-yellow-300 hover:bg-yellow-400 text-black border border-black font-black uppercase tracking-tighter px-1 py-0.5 rounded cursor-pointer transition-all shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]"
+                    >
+                      + BUY
+                    </button>
+                  </div>
                 </div>
                 <button onClick={handleLogout} className="ml-2 text-gray-500 hover:text-red-500 border border-transparent hover:border-black p-1 hover:bg-yellow-250 rounded transition-all cursor-pointer" title="Sign Out"><RotateCcw size={13}/></button>
               </>
@@ -2442,43 +2458,36 @@ export default function App() {
         </div>
       )}
 
-      {/* Purchase Modal */}
+      {/* Buy Tokens Modal */}
       {isPurchaseModalOpen && (
         <div className="fixed inset-0 z-[400] flex items-start md:items-center justify-center bg-black/70 backdrop-blur-sm overflow-y-auto p-4 text-black py-8">
           <motion.div 
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="max-w-4xl w-full bg-[#f0f0f0] border-4 border-black rounded-3xl p-6 sm:p-8 relative shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] my-auto"
+            className="max-w-xl w-full bg-[#fdfaf2] border-4 border-black rounded-3xl p-6 sm:p-8 relative shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] my-auto"
           >
-            {/* Header section closely matching pricing-container */}
-            <div className="text-center mb-8 relative z-10">
+            {/* Header section closely matching theme */}
+            <div className="text-center mb-6 relative z-10">
               <div className="inline-block relative">
-                <h2 className="text-3xl sm:text-4xl font-black text-black bg-yellow-300 px-8 py-3 rounded-2xl border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] uppercase -skew-x-1">
-                  Refill Game Tokens
+                <h2 className="text-2xl sm:text-3xl font-black text-black bg-yellow-300 px-6 py-2.5 rounded-2xl border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] uppercase -skew-x-1">
+                  Buy Tokens
                 </h2>
-                <div className="h-1 bg-black rounded-full mt-4 w-full" />
               </div>
-              <p className="text-[10px] text-black font-black uppercase tracking-widest mt-3 font-mono">
-                ⭐ Each token is a $1 direct contribution to humanitarian aid channels ⭐
+              <p className="text-[10px] text-rose-600 font-black uppercase tracking-widest mt-3.5 font-mono">
+                ⭐ INSTANT DEMO REFILL STATION (100% FREE) ⭐
               </p>
-              {stripeConfig && (
-                <div className="flex flex-col items-center gap-2 mt-4">
-                  {!stripeConfig.stripeEnabled && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 text-amber-850 text-[10px] sm:text-xs font-mono font-black border-2 border-amber-500 uppercase tracking-wide shadow-[2px_2px_0px_0px_rgba(245,158,11,1)]">
-                      ⚡ DEV SANDBOX TEST MODE ACTIVE (SIMULATE CHECKOUT FOR FREE)
-                    </span>
-                  )}
-                </div>
-              )}
+              <p className="text-[11px] text-black/75 font-semibold mt-1.5 max-w-sm mx-auto leading-normal">
+                Because we are in full-scale battle testing phase, refilling tokens is completely free! Get credited immediately on Firestore.
+              </p>
               
               {paymentError && (
-                <div className="max-w-xl mx-auto mt-4 bg-red-50 border-2 border-red-500 text-red-900 p-4 rounded-2xl shadow-[4px_4px_0px_0px_rgba(239,68,68,1)] text-left relative z-10 text-xs font-bold font-mono">
+                <div className="max-w-md mx-auto mt-4 bg-red-50 border-2 border-red-500 text-red-900 p-4 rounded-xl text-left relative z-10 text-xs font-bold font-mono">
                   <div className="flex justify-between items-center mb-1">
-                    <span className="font-black text-xs uppercase flex items-center gap-1.5 text-red-600">⚠️ TRANSACTION ERROR</span>
+                    <span className="font-black text-[10px] uppercase text-red-650">⚠️ REFILL ERROR</span>
                     <button 
                       onClick={() => setPaymentError(null)} 
                       type="button" 
-                      className="text-red-500 hover:text-red-700 font-bold bg-white border border-red-400 text-[10px] px-1.5 py-0.5 rounded shadow cursor-pointer active:translate-y-0.5"
+                      className="text-red-500 hover:text-red-700 font-bold bg-white border border-red-400 text-[9px] px-1.5 py-0.5 rounded cursor-pointer"
                     >
                       Dismiss
                     </button>
@@ -2488,129 +2497,104 @@ export default function App() {
               )}
 
               {paymentLoading && (
-                <div className="max-w-xl mx-auto mt-4 bg-blue-50 border-3 border-blue-500 text-blue-900 px-4 py-3 rounded-2xl shadow-[4px_4px_0px_0px_rgba(59,130,246,1)] text-center relative z-10 text-xs font-black uppercase tracking-wider animate-pulse flex items-center justify-center gap-2">
-                  <span className="animate-spin text-base">🌀</span> Launching Secure Checkout Terminal...
+                <div className="max-w-md mx-auto mt-4 bg-blue-50 border-2 border-blue-500 text-blue-900 px-4 py-2.5 rounded-xl text-center relative z-10 text-[10px] font-black uppercase tracking-wider animate-pulse flex items-center justify-center gap-2">
+                  <span className="animate-spin text-sm">🌀</span> Writing tokens to Firebase Firestore...
                 </div>
               )}
             </div>
 
             {/* Back effects inside the modal */}
-            <div className="absolute inset-0 pointer-events-none opacity-20">
+            <div className="absolute inset-0 pointer-events-none opacity-25">
               <div className="absolute inset-0" style={{
-                backgroundImage: "linear-gradient(#00000010 1px, transparent 1px), linear-gradient(90deg, #00000010 1px, transparent 1px)",
-                backgroundSize: "20px 20px"
+                backgroundImage: 'radial-gradient(#1e1a15 6%, transparent 6%)',
+                backgroundSize: '16px 16px'
               }} />
             </div>
 
             {/* Closing Button */}
             <button 
               onClick={() => setIsPurchaseModalOpen(false)}
-              className="absolute top-4 right-4 w-10 h-10 border-3 border-black rounded-xl bg-rose-500 text-white font-black hover:bg-rose-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 transition-all text-sm flex items-center justify-center cursor-pointer"
+              className="absolute top-4 right-4 w-9 h-9 border-3 border-black rounded-lg bg-rose-500 text-white font-black hover:bg-rose-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 transition-all text-xs flex items-center justify-center cursor-pointer"
             >
               ✕
             </button>
 
-            {/* Pricing / Packages Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative z-10">
-              {/* Starter Pack */}
-              <motion.div
-                whileHover={{ rotate: -1, scale: 1.02 }}
-                className="bg-white rounded-2xl p-6 border-3 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex justify-between items-start mb-4">
-                    <h3 className="text-xl font-black text-black">Starter Pack</h3>
-                    <span className="px-3 py-1 bg-rose-500 text-white font-black text-[9px] rounded-lg border-2 border-black uppercase">
-                      REFUEL
-                    </span>
-                  </div>
-                  <ul className="space-y-2 mb-6 text-black">
-                    {["10 Complete Tokens", "Paint Custom Walls", "Support Global Aid", "Standard Placement"].map((f, i) => (
-                      <li key={i} className="flex items-center gap-2 p-1.5 bg-gray-50 rounded-lg border-2 border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] text-[11px] font-bold">
-                        <span className="w-4 h-4 rounded-md bg-rose-500 text-white flex items-center justify-center text-[9px] border border-black">✓</span>
-                        {f}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <button 
-                  onClick={() => buyTokens(10)}
-                  className="w-full py-2.5 bg-rose-500 hover:bg-rose-600 text-white font-black text-xs border-3 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer rounded-xl uppercase"
+            {/* Quick Packages Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 relative z-10 mb-6">
+              {[
+                { amount: 100, label: "Starter", color: "bg-rose-300", desc: "For direct moves" },
+                { amount: 500, label: "Commander", color: "bg-blue-300", desc: "Highly popular choice", tag: "POPULAR" },
+                { amount: 1000, label: "Legend", color: "bg-purple-300", desc: "Ultimate map domination" }
+              ].map((pkg, idx) => (
+                <div 
+                  key={idx}
+                  className="bg-white rounded-2xl p-4 border-3 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col justify-between relative text-center"
                 >
-                  Get 10 Tokens for $10 &rarr;
-                </button>
-              </motion.div>
+                  {pkg.tag && (
+                    <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2 py-0.5 bg-yellow-300 text-black border border-black rounded text-[7px] font-black uppercase tracking-wider">
+                      {pkg.tag}
+                    </div>
+                  )}
 
-              {/* Pro / Tactician Pack */}
-              <motion.div
-                whileHover={{ rotate: 1, scale: 1.03 }}
-                className="bg-white rounded-2xl p-6 border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col justify-between relative"
-              >
-                {/* Popular band */}
-                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 bg-yellow-300 text-black border-2 border-black rounded-lg text-[9px] font-black uppercase tracking-widest shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                  ⚡ POPULAR CHOICE
-                </div>
-
-                <div className="mt-2">
-                  <div className="flex justify-between items-start mb-4">
-                    <h3 className="text-xl font-black text-black">Tactician</h3>
-                    <span className="px-3 py-1 bg-blue-500 text-white font-black text-[9px] rounded-lg border-2 border-black uppercase">
-                      BEST VALUE
-                    </span>
+                  <div>
+                    <h4 className="text-xs font-black uppercase tracking-tight text-black">{pkg.label}</h4>
+                    <div className="text-xl font-extrabold text-black my-1 font-sans">{pkg.amount} Tokens</div>
+                    <p className="text-[9px] text-black/60 font-bold leading-none mb-3 font-sans">{pkg.desc}</p>
                   </div>
-                  <ul className="space-y-2 mb-6 text-black">
-                    {["25 Complete Tokens", "Scan Enemy Mines", "Speed run Sprinting", "Leaderboard Showcase", "100% Humanitarian Aid"].map((f, i) => (
-                      <li key={i} className="flex items-center gap-2 p-1.5 bg-blue-50 rounded-lg border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-[11px] font-bold">
-                        <span className="w-4 h-4 rounded-md bg-blue-500 text-white flex items-center justify-center text-[9px] border border-black">✓</span>
-                        {f}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <button 
-                  onClick={() => buyTokens(25)}
-                  className="w-full py-2.5 bg-blue-500 hover:bg-blue-600 text-white font-black text-xs border-3 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer rounded-xl uppercase"
-                >
-                  Get 25 Tokens for $25 &rarr;
-                </button>
-              </motion.div>
 
-              {/* Enterprise / Tycoon Pack */}
-              <motion.div
-                whileHover={{ rotate: -1, scale: 1.02 }}
-                className="bg-white rounded-2xl p-6 border-3 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex justify-between items-start mb-4">
-                    <h3 className="text-xl font-black text-black">Tycoon Pack</h3>
-                    <span className="px-3 py-1 bg-purple-500 text-white font-black text-[9px] rounded-lg border-2 border-black uppercase">
-                      SUPREME
-                    </span>
-                  </div>
-                  <ul className="space-y-2 mb-6 text-black">
-                    {["100 Massive Tokens", "Premium Slingshot Launcher", "Infinite Map Influence", "Humanitarian Aid Hall candidate", "24/7 Strategic Respect"].map((f, i) => (
-                      <li key={i} className="flex items-center gap-2 p-1.5 bg-purple-50 rounded-lg border-2 border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] text-[11px] font-bold">
-                        <span className="w-4 h-4 rounded-md bg-purple-500 text-white flex items-center justify-center text-[9px] border border-black">✓</span>
-                        {f}
-                      </li>
-                    ))}
-                  </ul>
+                  <button 
+                    onClick={() => buyTokens(pkg.amount)}
+                    className="w-full py-1.5 bg-yellow-300 hover:bg-yellow-400 text-black font-black text-[10px] border-2 border-black rounded-xl hover:-translate-y-0.5 active:translate-y-0.5 transition-all cursor-pointer uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]"
+                  >
+                    Get Free &rarr;
+                  </button>
                 </div>
-                <button 
-                  onClick={() => buyTokens(100)}
-                  className="w-full py-2.5 bg-purple-500 hover:bg-purple-600 text-white font-black text-xs border-3 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer rounded-xl uppercase"
-                >
-                  Get 100 Tokens for $100 &rarr;
-                </button>
-              </motion.div>
+              ))}
             </div>
 
-            <div className="text-center mt-8">
+            {/* Custom Input Box Block */}
+            <div className="bg-white border-3 border-black rounded-2xl p-4 relative z-10 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-center">
+              <h4 className="text-xs font-black uppercase tracking-wider text-black mb-1.5">
+                💎 Grab Custom Token Pack
+              </h4>
+              <p className="text-[10px] text-black/60 font-medium mb-3">
+                Need more? Enter any custom number of tokens to acquire instantly.
+              </p>
+
+              <div className="flex items-center justify-center gap-3">
+                <input 
+                  type="number"
+                  min="1"
+                  max="50000"
+                  value={customTokenAmount}
+                  onChange={(e) => setCustomTokenAmount(e.target.value)}
+                  className="bg-yellow-50 border-2 border-black py-2 px-3 rounded-xl font-black text-center text-sm w-36 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] outline-none text-black"
+                  placeholder="250"
+                />
+                
+                <button
+                  type="button"
+                  onClick={() => {
+                    const parsed = parseInt(customTokenAmount);
+                    if (isNaN(parsed) || parsed <= 0) {
+                      setPaymentError("Please enter a valid positive number of tokens.");
+                      return;
+                    }
+                    buyTokens(parsed);
+                  }}
+                  className="px-4 py-2.5 bg-green-300 hover:bg-green-400 text-black text-[10px] font-black uppercase tracking-widest rounded-xl border-2 border-black hover:-translate-y-0.5 active:translate-y-0.5 transition-all cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]"
+                >
+                  Claim Tokens (FREE)
+                </button>
+              </div>
+            </div>
+
+            <div className="text-center mt-5">
               <button 
                 onClick={() => setIsPurchaseModalOpen(false)}
                 className="text-black/50 hover:text-black font-black text-[10px] uppercase tracking-wider underline cursor-pointer"
               >
-                Maybe Later, Let's Watch
+                Close & Return to Battle
               </button>
             </div>
           </motion.div>

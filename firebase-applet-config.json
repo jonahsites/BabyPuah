@@ -1,10 +1,10 @@
 {
   "projectId": "babypush",
-  "appId": "1:287939818326:web:c9e8d5af4efed75da61cf7",
+  "appId": "1:287939818326:web:e85c98dcf3c0bf2ea61cf7",
   "apiKey": "AIzaSyA5BqM64RwBZeYFHQSkBoLX22_uqASYn5s",
   "authDomain": "babypush.firebaseapp.com",
-  "firestoreDatabaseId": "(default)",
+  "firestoreDatabaseId": "ai-studio-07a2b1ab-3082-4aa5-8a0a-93f535e890ae",
   "storageBucket": "babypush.firebasestorage.app",
   "messagingSenderId": "287939818326",
-  "measurementId": "G-S83PLY6R9M"
+  "measurementId": ""
 }
