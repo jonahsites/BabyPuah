@@ -14,65 +14,65 @@ import SlingshotGame from "./components/SlingshotGame";
 const GAME_ID = "global";
 
 const GAME_OBSTACLES = [
-  {
-    id: "sandbox",
-    name: "🏖️ Blue Sandbox Space",
-    emoji: "🏖️",
-    desc: "Plush beach playground outpost.",
-    x: 45, y: 95, w: 11, h: 11,
-    bgColor: "bg-amber-100",
-    borderColor: "border-amber-800",
-    titleColor: "text-amber-900"
-  },
-  {
-    id: "toyfort",
-    name: "🏰 LEGO Block Castle",
-    emoji: "🏰",
-    desc: "Sturdy bricks fortress barrier.",
-    x: 145, y: 95, w: 11, h: 11,
-    bgColor: "bg-emerald-100",
-    borderColor: "border-emerald-800",
-    titleColor: "text-emerald-900"
-  },
-  {
-    id: "tower-upper",
-    name: "🗼 Middle Buffer Watchtower (Upper)",
-    emoji: "🗼",
-    desc: "Central security fence structure.",
-    x: 97, y: 30, w: 7, h: 16,
-    bgColor: "bg-orange-100",
-    borderColor: "border-orange-850",
-    titleColor: "text-orange-900"
-  },
-  {
-    id: "tower-lower",
-    name: "🗼 Middle Buffer Watchtower (Lower)",
-    emoji: "🗼",
-    desc: "Central security fence structure.",
-    x: 97, y: 155, w: 7, h: 16,
-    bgColor: "bg-orange-100",
-    borderColor: "border-orange-850",
-    titleColor: "text-orange-900"
-  },
-  {
-    id: "lake",
-    name: "⛲ Central Fountain whirlpool",
-    emoji: "⛲",
-    desc: "Spawning slippery baby fountain vortex.",
-    x: 97, y: 95, w: 7, h: 11,
-    bgColor: "bg-sky-100",
-    borderColor: "border-sky-800",
-    titleColor: "text-sky-900"
-  }
+  // --- LAYER 1: Near Spawn Area (y = 155) ---
+  // Left side horizontal baffle line
+  { id: "line-1a", x: 10, y: 155, w: 60, h: 2 },
+  // Right side horizontal baffle line
+  { id: "line-1b", x: 130, y: 155, w: 60, h: 2 },
+  // Central vertical division corridor wall
+  { id: "line-1c", x: 99, y: 140, w: 2, h: 30 },
+
+  // --- LAYER 2: Mid-Lower Field (y = 115) ---
+  // Extended centered baffle block line
+  { id: "line-2a", x: 60, y: 115, w: 80, h: 2 },
+  // Far outer edges to channel players into the gaps
+  { id: "line-2b", x: 0, y: 115, w: 25, h: 2 },
+  { id: "line-2c", x: 175, y: 115, w: 25, h: 2 },
+
+  // --- LAYER 3: Middle Field (y = 80) ---
+  // Checkerboard chicane panels (forces a winding flow)
+  { id: "line-3a", x: 30, y: 80, w: 55, h: 2 },
+  { id: "line-3b", x: 115, y: 80, w: 55, h: 2 },
+  // Vertical checkpoint lanes
+  { id: "line-3c", x: 45, y: 65, w: 2, h: 30 },
+  { id: "line-3d", x: 153, y: 65, w: 2, h: 30 },
+
+  // --- LAYER 4: Finish Approach Squeezes (y = 45) ---
+  // Thick gate elements with narrow openings
+  { id: "line-4a", x: 0, y: 45, w: 85, h: 2 },
+  { id: "line-4b", x: 100, y: 45, w: 10, h: 2 },
+  { id: "line-4c", x: 115, y: 45, w: 85, h: 2 },
+
+  // --- LAYER 5: Front of Finish Line Shield (y = 25) ---
+  { id: "line-5a", x: 80, y: 25, w: 40, h: 2 }
 ];
 
+const OBSTACLE_COORDS_SET = (() => {
+  const coords = new Set<string>();
+  for (const obs of GAME_OBSTACLES) {
+    for (let dx = 0; dx < obs.w; dx++) {
+      for (let dy = 0; dy < obs.h; dy++) {
+        coords.add(`${obs.x + dx},${obs.y + dy}`);
+      }
+    }
+  }
+  return coords;
+})();
+
+const PERMANENT_WALL_PIXELS = (() => {
+  const pixels: { x: number; y: number }[] = [];
+  for (const obs of GAME_OBSTACLES) {
+    for (let dx = 0; dx < obs.w; dx++) {
+      for (let dy = 0; dy < obs.h; dy++) {
+        pixels.push({ x: obs.x + dx, y: obs.y + dy });
+      }
+    }
+  }
+  return pixels;
+})();
+
 const isObstacleVal = (x: number, y: number): boolean => {
-  if (x >= 45 && x <= 55 && y >= 95 && y <= 105) return true;
-  if (x >= 145 && x <= 155 && y >= 95 && y <= 105) return true;
-  if (x >= 97 && x <= 103 && y >= 30 && y <= 45) return true;
-  if (x >= 97 && x <= 103 && y >= 155 && y <= 170) return true;
-  if (x >= 97 && x <= 103 && y >= 95 && y <= 105) return true;
-  return false;
+  return OBSTACLE_COORDS_SET.has(`${x},${y}`);
 };
 
 const JACKPOT_SLICES = [
@@ -1227,7 +1227,8 @@ export default function App() {
       className="w-screen h-screen overflow-hidden bg-[#eae6dc] cursor-grab select-none flex items-start justify-start relative font-sans"
       style={{
         backgroundImage: 'radial-gradient(#1e1a15 8%, transparent 8%)',
-        backgroundSize: '24px 24px'
+        backgroundSize: '24px 24px',
+        touchAction: 'none'
       }}
     >
       {/* Team Selection Overlay */}
@@ -1558,6 +1559,7 @@ export default function App() {
                 const formData = new FormData(e.currentTarget);
                 const steps = parseInt(formData.get('steps') as string);
                 const dir = formData.get('direction') as string;
+                setActiveModal(null); // Instantly dismiss modal upon hitting confirm!
                 handleBatchMove(steps, dir);
               }}>
                 <div className="space-y-4">
@@ -2706,23 +2708,18 @@ export default function App() {
           <span className="text-[10px]">👶🍼</span>
         </div>
 
-        {/* Permanent Obstacles */}
-        {GAME_OBSTACLES.map((obs) => (
-          <div
-            key={obs.id}
-            className={`absolute flex flex-col items-center justify-center border-4 ${obs.borderColor} ${obs.bgColor} rounded-2xl shadow-[4px_4px_0px_0px_#000] z-10 p-1 text-center select-none overflow-hidden group`}
+        {/* Permanent Obstacles (Rendered as 4px slate-colored wall bricks) */}
+        {PERMANENT_WALL_PIXELS.map((pt, idx) => (
+          <div 
+            key={`perm-wall-${idx}`}
+            className="absolute bg-slate-700 border border-slate-500 box-border z-[4]"
             style={{
-              left: `${obs.x * 4}px`,
-              top: `${obs.y * 4}px`,
-              width: `${obs.w * 4}px`,
-              height: `${obs.h * 4}px`
+              left: `${pt.x * 4}px`,
+              top: `${pt.y * 4}px`,
+              width: '4px',
+              height: '4px'
             }}
-          >
-            <span className="text-sm select-none drop-shadow-sm">{obs.emoji}</span>
-            <div className="absolute opacity-0 group-hover:opacity-100 bg-[#fffbeb] border-2 border-black text-black text-[9px] p-2 rounded-xl z-50 w-36 text-center uppercase tracking-tight font-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] pointer-events-none transition-opacity -top-12">
-              {obs.name}
-            </div>
-          </div>
+          />
         ))}
 
         {walls.map((coord, i) => {
