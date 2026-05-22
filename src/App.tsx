@@ -13,6 +13,68 @@ import SlingshotGame from "./components/SlingshotGame";
 
 const GAME_ID = "global";
 
+const GAME_OBSTACLES = [
+  {
+    id: "sandbox",
+    name: "🏖️ Blue Sandbox Space",
+    emoji: "🏖️",
+    desc: "Plush beach playground outpost.",
+    x: 45, y: 95, w: 11, h: 11,
+    bgColor: "bg-amber-100",
+    borderColor: "border-amber-800",
+    titleColor: "text-amber-900"
+  },
+  {
+    id: "toyfort",
+    name: "🏰 LEGO Block Castle",
+    emoji: "🏰",
+    desc: "Sturdy bricks fortress barrier.",
+    x: 145, y: 95, w: 11, h: 11,
+    bgColor: "bg-emerald-100",
+    borderColor: "border-emerald-800",
+    titleColor: "text-emerald-900"
+  },
+  {
+    id: "tower-upper",
+    name: "🗼 Middle Buffer Watchtower (Upper)",
+    emoji: "🗼",
+    desc: "Central security fence structure.",
+    x: 97, y: 30, w: 7, h: 16,
+    bgColor: "bg-orange-100",
+    borderColor: "border-orange-850",
+    titleColor: "text-orange-900"
+  },
+  {
+    id: "tower-lower",
+    name: "🗼 Middle Buffer Watchtower (Lower)",
+    emoji: "🗼",
+    desc: "Central security fence structure.",
+    x: 97, y: 155, w: 7, h: 16,
+    bgColor: "bg-orange-100",
+    borderColor: "border-orange-850",
+    titleColor: "text-orange-900"
+  },
+  {
+    id: "lake",
+    name: "⛲ Central Fountain whirlpool",
+    emoji: "⛲",
+    desc: "Spawning slippery baby fountain vortex.",
+    x: 97, y: 95, w: 7, h: 11,
+    bgColor: "bg-sky-100",
+    borderColor: "border-sky-800",
+    titleColor: "text-sky-900"
+  }
+];
+
+const isObstacleVal = (x: number, y: number): boolean => {
+  if (x >= 45 && x <= 55 && y >= 95 && y <= 105) return true;
+  if (x >= 145 && x <= 155 && y >= 95 && y <= 105) return true;
+  if (x >= 97 && x <= 103 && y >= 30 && y <= 45) return true;
+  if (x >= 97 && x <= 103 && y >= 155 && y <= 170) return true;
+  if (x >= 97 && x <= 103 && y >= 95 && y <= 105) return true;
+  return false;
+};
+
 const JACKPOT_SLICES = [
   { value: 50, color: '#eab308' }, // Golden/Yellow Jackpot
   { value: 5, color: '#ef4444' },  // Vibrant Red
@@ -304,6 +366,51 @@ export default function App() {
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
 
+  const [winner, setWinner] = useState<'blue' | 'red' | null>(null);
+
+  // Check win conditions (Finish Line goals at y <= 8)
+  useEffect(() => {
+    if (bluePos.y <= 8 && !winner && !isInitializing) {
+      setWinner('blue');
+      addLog("🏆 CHAMPIONSHIP LEG COMPLETED! Blue team crossed the Finish Line! 🍼🎉");
+      // Credit bonus tokens on successful goal
+      if (user) {
+        const userRef = doc(db, "users", user.uid);
+        updateDoc(userRef, { currentTokens: increment(100) })
+          .then(() => {
+            addLog("🎁 CHAMPIONSHIP LEG REWARD: Blue team earned 100 bonus tokens!");
+          })
+          .catch((err) => {
+            console.error("Failed to credit win tokens:", err);
+            setProfile(p => p ? { ...p, currentTokens: p.currentTokens + 100 } : null);
+          });
+      } else {
+        setProfile(p => p ? { ...p, currentTokens: p.currentTokens + 100 } : null);
+      }
+    }
+  }, [bluePos.y, winner, isInitializing, user]);
+
+  useEffect(() => {
+    if (redPos.y <= 8 && !winner && !isInitializing) {
+      setWinner('red');
+      addLog("🏆 CHAMPIONSHIP LEG COMPLETED! Red team crossed the Finish Line! 🍼🎉");
+      // Credit bonus tokens on successful goal
+      if (user) {
+        const userRef = doc(db, "users", user.uid);
+        updateDoc(userRef, { currentTokens: increment(100) })
+          .then(() => {
+            addLog("🎁 CHAMPIONSHIP LEG REWARD: Red team earned 100 bonus tokens!");
+          })
+          .catch((err) => {
+            console.error("Failed to credit win tokens:", err);
+            setProfile(p => p ? { ...p, currentTokens: p.currentTokens + 100 } : null);
+          });
+      } else {
+        setProfile(p => p ? { ...p, currentTokens: p.currentTokens + 100 } : null);
+      }
+    }
+  }, [redPos.y, winner, isInitializing, user]);
+
   useEffect(() => {
     const hasSeenOnboarding = localStorage.getItem("babypush_onboarded_v3");
     if (!hasSeenOnboarding) {
@@ -440,7 +547,8 @@ export default function App() {
     const vh = viewport.clientHeight || window.innerHeight;
     const gw = size * 4;
     const gh = size * 4;
-    transformRef.current.scale = vw < 640 ? 0.45 : 1.0;
+    const isMobile = window.innerWidth < 768;
+    transformRef.current.scale = isMobile ? 0.45 : 1.0;
     transformRef.current.x = (vw - gw * transformRef.current.scale) / 2;
     transformRef.current.y = (vh - gh * transformRef.current.scale) / 2;
 
@@ -457,18 +565,30 @@ export default function App() {
       const prevScale = transformRef.current.scale;
       const newScale = Math.min(Math.max(0.2, prevScale + delta), 5);
 
-      const rect = viewport.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
+      const isMobileNow = window.innerWidth < 768;
+      if (isMobileNow) {
+        const rvw = viewport.clientWidth || window.innerWidth;
+        const rvh = viewport.clientHeight || window.innerHeight;
+        const rgw = size * 4;
+        const rgh = size * 4;
+        transformRef.current.x = (rvw - rgw * newScale) / 2;
+        transformRef.current.y = (rvh - rgh * newScale) / 2;
+      } else {
+        const rect = viewport.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
 
-      transformRef.current.x -= (mx - transformRef.current.x) * (newScale / prevScale - 1);
-      transformRef.current.y -= (my - transformRef.current.y) * (newScale / prevScale - 1);
+        transformRef.current.x -= (mx - transformRef.current.x) * (newScale / prevScale - 1);
+        transformRef.current.y -= (my - transformRef.current.y) * (newScale / prevScale - 1);
+      }
       transformRef.current.scale = newScale;
       update();
     };
 
     const handlePointerDown = (e: PointerEvent) => {
       if ((e.target as HTMLElement).closest('button, input, select, textarea, a') || isWallBuilding) return;
+      const isMobileNow = window.innerWidth < 768;
+      if (isMobileNow) return; // Block moving on mobile entirely!
       isDragging.current = true;
       startPos.current = {
         x: e.clientX - transformRef.current.x,
@@ -479,6 +599,8 @@ export default function App() {
 
     const handlePointerMove = (e: PointerEvent) => {
       if (!isDragging.current) return;
+      const isMobileNow = window.innerWidth < 768;
+      if (isMobileNow) return; // Block moving on mobile entirely!
       transformRef.current.x = e.clientX - startPos.current.x;
       transformRef.current.y = e.clientY - startPos.current.y;
       update();
@@ -489,16 +611,32 @@ export default function App() {
       viewport.style.cursor = 'grab';
     };
 
+    const handleResize = () => {
+      const isMobileNow = window.innerWidth < 768;
+      if (isMobileNow) {
+        const rvw = viewport.clientWidth || window.innerWidth;
+        const rvh = viewport.clientHeight || window.innerHeight;
+        const rgw = size * 4;
+        const rgh = size * 4;
+        transformRef.current.scale = 0.45;
+        transformRef.current.x = (rvw - rgw * transformRef.current.scale) / 2;
+        transformRef.current.y = (rvh - rgh * transformRef.current.scale) / 2;
+        update();
+      }
+    };
+
     viewport.addEventListener("wheel", handleWheel, { passive: false });
     viewport.addEventListener("pointerdown", handlePointerDown);
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("resize", handleResize);
 
     return () => {
       viewport.removeEventListener("wheel", handleWheel);
       viewport.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("resize", handleResize);
     };
   }, []);
 
@@ -517,7 +655,7 @@ export default function App() {
         if (key === 'd' && bluePos.x < (size / 2) - 1) { nextPos.x += 1; nextRot = 0; }
         
         if (nextPos.x !== bluePos.x || nextPos.y !== bluePos.y) {
-          if (walls.includes(`${nextPos.x},${nextPos.y}`)) return;
+          if (walls.includes(`${nextPos.x},${nextPos.y}`) || isObstacleVal(nextPos.x, nextPos.y)) return;
           if (mines.includes(`${nextPos.x},${nextPos.y}`)) {
             setMineAlert(`You hit a mine! Resetting to start.`);
             addLog("Blue hit a mine! Resetting to start.");
@@ -548,7 +686,7 @@ export default function App() {
         if (key === 'arrowright' && redPos.x < size - 1) { nextPos.x += 1; nextRot = 0; }
         
         if (nextPos.x !== redPos.x || nextPos.y !== redPos.y) {
-          if (walls.includes(`${nextPos.x},${nextPos.y}`)) return;
+          if (walls.includes(`${nextPos.x},${nextPos.y}`) || isObstacleVal(nextPos.x, nextPos.y)) return;
           if (mines.includes(`${nextPos.x},${nextPos.y}`)) {
             setMineAlert(`You hit a mine! Resetting to start.`);
             addLog("Red hit a mine! Resetting to start.");
@@ -674,7 +812,7 @@ export default function App() {
         }
         
         if (nextPos.x !== temp.x || nextPos.y !== temp.y) {
-          if (walls.includes(`${nextPos.x},${nextPos.y}`)) {
+          if (walls.includes(`${nextPos.x},${nextPos.y}`) || isObstacleVal(nextPos.x, nextPos.y)) {
             nextPos = temp; // Blocked
             break;
           }
@@ -780,8 +918,8 @@ export default function App() {
 
       if (!inBound) break; // Terminate flight at map boundary
 
-      if (walls.includes(`${pt.x},${pt.y}`)) {
-        break; // Terminate flight (blocked by wall)
+      if (walls.includes(`${pt.x},${pt.y}`) || isObstacleVal(pt.x, pt.y)) {
+        break; // Terminate flight (blocked by wall or obstacle)
       }
 
       if (mines.includes(`${pt.x},${pt.y}`)) {
@@ -825,8 +963,9 @@ export default function App() {
     if (type !== 'move' && type !== 'grid') return;
 
     const targetSideSide = type === 'move' ? side : (side === 'blue' ? 'red' : 'blue');
-    await executeBatchMove(side, targetSideSide, type, steps, direction);
+    // Close modal instantly on confirm click so the UI feels snappy and fast!
     setActiveModal(null);
+    await executeBatchMove(side, targetSideSide, type, steps, direction);
   };
 
   const handleZoom = (direction: 'in' | 'out') => {
@@ -840,12 +979,22 @@ export default function App() {
 
     if (newScale === prevScale) return;
 
-    const rect = viewport.getBoundingClientRect();
-    const mx = rect.width / 2;
-    const my = rect.height / 2;
+    const isMobile = window.innerWidth < 768;
+    if (isMobile) {
+      const vw = viewport.clientWidth || window.innerWidth;
+      const vh = viewport.clientHeight || window.innerHeight;
+      const gw = size * 4;
+      const gh = size * 4;
+      transformRef.current.x = (vw - gw * newScale) / 2;
+      transformRef.current.y = (vh - gh * newScale) / 2;
+    } else {
+      const rect = viewport.getBoundingClientRect();
+      const mx = rect.width / 2;
+      const my = rect.height / 2;
 
-    transformRef.current.x -= (mx - transformRef.current.x) * (newScale / prevScale - 1);
-    transformRef.current.y -= (my - transformRef.current.y) * (newScale / prevScale - 1);
+      transformRef.current.x -= (mx - transformRef.current.x) * (newScale / prevScale - 1);
+      transformRef.current.y -= (my - transformRef.current.y) * (newScale / prevScale - 1);
+    }
     transformRef.current.scale = newScale;
 
     grid.style.transform = `translate(${transformRef.current.x}px, ${transformRef.current.y}px) scale(${transformRef.current.scale})`;
@@ -880,6 +1029,7 @@ export default function App() {
   };
 
   const handleTeleport = async (side: 'blue' | 'red') => {
+    setActiveModal(null); // Instantly dismiss modal popup!
     const cost = 5;
     const success = await spendTokens(side, cost);
     if (!success) return;
@@ -931,6 +1081,7 @@ export default function App() {
   };
 
   const handleMinefield = async (side: 'blue' | 'red') => {
+    setActiveModal(null); // Instantly dismiss modal popup!
     const cost = 20;
     const success = await spendTokens(side, cost);
     if (!success) return;
@@ -1007,6 +1158,11 @@ export default function App() {
     
     const x = Math.floor((e.clientX - rect.left) / (4 * transformRef.current.scale));
     const y = Math.floor((e.clientY - rect.top) / (4 * transformRef.current.scale));
+
+    if (isObstacleVal(x, y)) {
+      addLog("🚧 Core Battle Notice: Erecting custom barriers on permanent structures is forbidden!");
+      return;
+    }
 
     const costPerPixel = 2;
     const side = isWallBuilding.side;
@@ -2503,6 +2659,72 @@ export default function App() {
         }}
         onClick={handleGridClick}
       >
+        {/* Championship Finish Line (Checkered Pattern) */}
+        <div 
+          className="absolute left-0 w-full h-[16px] border-b-4 border-black z-10 flex items-center justify-between pointer-events-none overflow-hidden"
+          style={{
+            top: '16px',
+            backgroundColor: '#000',
+            backgroundImage: 'conic-gradient(#fff 0.25turn, #000 0.25turn 0.5turn, #fff 0.5turn 0.75turn, #000 0.75turn)',
+            backgroundSize: '16px 16px'
+          }}
+        >
+          {/* Neon Indicators in the finish strip */}
+          <div className="bg-yellow-300 text-black border-r-3 border-black font-black text-[9px] uppercase px-3 py-0.5 tracking-wider select-none font-sans shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] z-20">
+            🏁 BLUE GOAL
+          </div>
+          <div className="bg-yellow-300 text-black border-l-3 border-black font-black text-[9px] uppercase px-3 py-0.5 tracking-wider select-none font-sans shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] z-20">
+            🏁 RED GOAL
+          </div>
+        </div>
+
+        {/* Blue Spawn Zone Base Cover */}
+        <div 
+          className="absolute border-3 border-[#3b82f6] bg-blue-50/50 rounded-2xl flex flex-col items-center justify-center pointer-events-none"
+          style={{
+            left: `${(49 - 8) * 4}px`,
+            top: `${(195 - 10) * 4}px`,
+            width: `${16 * 4}px`,
+            height: `${14 * 4}px`
+          }}
+        >
+          <span className="text-[#3b82f6] font-black tracking-tight text-[8px] uppercase">BLUE SPAWN BASE</span>
+          <span className="text-[10px]">👶🍼</span>
+        </div>
+
+        {/* Red Spawn Zone Base Cover */}
+        <div 
+          className="absolute border-3 border-[#ef4444] bg-red-50/50 rounded-2xl flex flex-col items-center justify-center pointer-events-none"
+          style={{
+            left: `${(149 - 8) * 4}px`,
+            top: `${(195 - 10) * 4}px`,
+            width: `${16 * 4}px`,
+            height: `${14 * 4}px`
+          }}
+        >
+          <span className="text-[#ef4444] font-black tracking-tight text-[8px] uppercase">RED SPAWN BASE</span>
+          <span className="text-[10px]">👶🍼</span>
+        </div>
+
+        {/* Permanent Obstacles */}
+        {GAME_OBSTACLES.map((obs) => (
+          <div
+            key={obs.id}
+            className={`absolute flex flex-col items-center justify-center border-4 ${obs.borderColor} ${obs.bgColor} rounded-2xl shadow-[4px_4px_0px_0px_#000] z-10 p-1 text-center select-none overflow-hidden group`}
+            style={{
+              left: `${obs.x * 4}px`,
+              top: `${obs.y * 4}px`,
+              width: `${obs.w * 4}px`,
+              height: `${obs.h * 4}px`
+            }}
+          >
+            <span className="text-sm select-none drop-shadow-sm">{obs.emoji}</span>
+            <div className="absolute opacity-0 group-hover:opacity-100 bg-[#fffbeb] border-2 border-black text-black text-[9px] p-2 rounded-xl z-50 w-36 text-center uppercase tracking-tight font-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] pointer-events-none transition-opacity -top-12">
+              {obs.name}
+            </div>
+          </div>
+        ))}
+
         {walls.map((coord, i) => {
           const [wx, wy] = coord.split(',').map(Number);
           return (
@@ -2609,6 +2831,45 @@ export default function App() {
           alt="Red figure"
         />
       </div>
+
+      {/* Championship Winner Celebration Modal */}
+      {winner && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/85 backdrop-blur-md p-4">
+          <motion.div 
+            initial={{ scale: 0.9, y: 20 }}
+            animate={{ scale: 1, y: 0 }}
+            className="max-w-md w-full bg-yellow-300 border-4 border-black p-8 rounded-3xl text-center shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden"
+          >
+            {/* Visual Confetti / Stars */}
+            <div className="absolute top-2 left-4 text-3xl animate-bounce">✨</div>
+            <div className="absolute top-6 right-8 text-3xl animate-pulse">👑</div>
+            <div className="absolute bottom-4 left-8 text-2xl animate-pulse">🍼</div>
+            <div className="absolute bottom-6 right-4 text-3xl animate-bounce">🎈</div>
+
+            <div className="text-7xl mb-4">🏆</div>
+            <h2 className="text-4xl font-black text-black uppercase tracking-tight leading-none mb-2">
+              {winner === 'blue' ? 'BLUE TEAM WINS!' : 'RED TEAM WINS!'}
+            </h2>
+            <p className="text-[10px] text-black font-black uppercase tracking-widest font-mono mb-4 bg-black/15 py-1 px-2 rounded-lg inline-block">
+              🏁 Championship Finish Crossed 🏁
+            </p>
+            
+            <p className="text-black font-sans text-xs font-bold leading-relaxed mb-6">
+              An epic stroller maneuver has successfully bypassed the barriers, mines, and rival wall blocks to reach the goal! <strong>+100 Championship Bonus Tokens</strong> have been credited as a victory gift. Let the next leg begin!
+            </p>
+
+            <button 
+              onClick={async () => {
+                setWinner(null);
+                await handleReset();
+              }}
+              className="w-full py-4 bg-emerald-500 hover:bg-[#10b981] text-white font-black border-3 border-black rounded-xl hover:-translate-y-0.5 active:translate-y-0.5 transition-all uppercase text-xs tracking-wider shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+            >
+              Start Next Championship Leg &rarr;
+            </button>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }
