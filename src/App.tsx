@@ -397,11 +397,6 @@ export default function App() {
   const [blueTrail, setBlueTrail] = useState<string[]>([]);
   const [redTrail, setRedTrail] = useState<string[]>([]);
 
-  const [isInitializing, setIsInitializing] = useState(true);
-  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
-  const [onboardingStep, setOnboardingStep] = useState(0);
-  const [selectedExplainerButton, setSelectedExplainerButton] = useState<'move' | 'push' | 'tele' | 'wall' | 'mine' | 'sling' | 'landmark' | 'lucky'>('move');
-
   const [winner, setWinner] = useState<'blue' | 'red' | null>(null);
 
   const hasBlueSideMines = mines.some(coord => {
@@ -412,6 +407,43 @@ export default function App() {
     const [mx] = coord.split(',').map(Number);
     return mx >= widthSize / 2;
   });
+
+  const selectedBaby = useMemo(() => {
+    if (selectedBabyId === 'none') return null;
+    if (selectedBabyId === 'blue') return { name: 'Blue Baby', color: '#3b82f6', x: bluePos.x, y: bluePos.y };
+    if (selectedBabyId === 'red') return { name: 'Red Baby', color: '#ef4444', x: redPos.x, y: redPos.y };
+    return sponsoredBabies.find(b => b.id === selectedBabyId);
+  }, [selectedBabyId, sponsoredBabies, bluePos, redPos]);
+
+  const selectedName = selectedBaby?.name || 'None';
+  const selectedColor = selectedBaby?.color || '#000';
+  const selectedPos = { x: selectedBaby?.x || 0, y: selectedBaby?.y || 0 };
+
+  const selectedBabySide = useMemo(() => {
+    if (selectedBabyId === 'blue') return 'blue';
+    if (selectedBabyId === 'red') return 'red';
+    const baby = sponsoredBabies.find(b => b.id === selectedBabyId);
+    return baby?.side === 'left' ? 'blue' : 'red';
+  }, [selectedBabyId, sponsoredBabies]);
+
+  const selectedSprintActive = useMemo(() => {
+    const isBlue = selectedBabySide === 'blue';
+    const sprintEnd = isBlue ? sprintBlue : sprintRed;
+    return sprintEnd > Date.now();
+  }, [selectedBabySide, sprintBlue, sprintRed]);
+
+  const selectedSideHasMines = useMemo(() => {
+    return selectedBabySide === 'blue' ? hasBlueSideMines : hasRedSideMines;
+  }, [selectedBabySide, hasBlueSideMines, hasRedSideMines]);
+
+  const selectedSideMinesRevealed = useMemo(() => {
+    return selectedBabySide === 'blue' ? blueMinesRevealed : redMinesRevealed;
+  }, [selectedBabySide, blueMinesRevealed, redMinesRevealed]);
+
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(0);
+  const [selectedExplainerButton, setSelectedExplainerButton] = useState<'move' | 'push' | 'tele' | 'wall' | 'mine' | 'sling' | 'landmark' | 'lucky'>('move');
 
   // Check win conditions (Finish Line goals at y <= 8)
   useEffect(() => {
