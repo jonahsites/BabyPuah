@@ -14,6 +14,14 @@ import SlingshotGame from "./components/SlingshotGame";
 const GAME_ID = "global";
 
 const GAME_OBSTACLES = [
+  // --- LAYER 0: Bottom Spawn Defense (y = 205) ---
+  // Left side horizontal baffle line
+  { id: "line-0a", x: 15, y: 205, w: 55, h: 2 },
+  // Right side horizontal baffle line
+  { id: "line-0b", x: 130, y: 205, w: 55, h: 2 },
+  // Core vertical divide near spawn area
+  { id: "line-0c", x: 99, y: 190, w: 2, h: 25 },
+
   // --- LAYER 1: Near Spawn Area (y = 155) ---
   // Left side horizontal baffle line
   { id: "line-1a", x: 10, y: 155, w: 60, h: 2 },
@@ -119,7 +127,10 @@ export default function App() {
     };
   }, []);
   
-  const size = 200;
+  const widthSize = 200;
+  const heightSize = 250;
+  const [liveTracking, setLiveTracking] = useState(false);
+  
   const gridRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   
@@ -128,8 +139,8 @@ export default function App() {
   const startPos = useRef({ x: 0, y: 0 });
 
   // Initial Positions
-  const initialBlue = { x: 49, y: 195 };
-  const initialRed = { x: 149, y: 195 };
+  const initialBlue = { x: 49, y: 245 };
+  const initialRed = { x: 149, y: 245 };
 
   // Login logic
   const handleLogin = async () => {
@@ -284,8 +295,20 @@ export default function App() {
   const [mineAlert, setMineAlert] = useState<string | null>(null);
   const [activeModal, setActiveModal] = useState<{
     side: 'blue' | 'red',
-    type: 'move' | 'grid' | 'jackpot' | 'teleport' | 'wall' | 'mine' | 'slingshot'
+    type: 'move' | 'grid' | 'jackpot' | 'teleport' | 'wall' | 'mine' | 'slingshot' | 'landmark'
   } | null>(null);
+
+  const [landmarks, setLandmarks] = useState<any[]>([]); // Array of Landmark objects
+  const [landmarkName, setLandmarkName] = useState('');
+  const [landmarkMessage, setLandmarkMessage] = useState('');
+  const [landmarkColor, setLandmarkColor] = useState('#3b82f6');
+  const [isLandmarkPlacing, setIsLandmarkPlacing] = useState<{
+    name: string;
+    message: string;
+    color: string;
+    side: 'blue' | 'red';
+  } | null>(null);
+  const [selectedLandmark, setSelectedLandmark] = useState<any | null>(null);
 
   const [userRole, setUserRole] = useState<'blue' | 'red' | 'admin' | 'none'>('none');
   const [mobileActiveSide, setMobileActiveSide] = useState<'blue' | 'red'>('blue');
@@ -299,6 +322,8 @@ export default function App() {
   const [walls, setWalls] = useState<string[]>([]); // "x,y"
   const [mines, setMines] = useState<string[]>([]); // "x,y"
   const [minesRevealed, setMinesRevealed] = useState(false);
+  const [blueMinesRevealed, setBlueMinesRevealed] = useState(false);
+  const [redMinesRevealed, setRedMinesRevealed] = useState(false);
   const [logs, setLogs] = useState<{ msg: string, time: string }[]>([]);
   const [sprintBlue, setSprintBlue] = useState(0); // timestamp until end
   const [sprintRed, setSprintRed] = useState(0); // timestamp until end
@@ -315,8 +340,18 @@ export default function App() {
   const [isInitializing, setIsInitializing] = useState(true);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
+  const [selectedExplainerButton, setSelectedExplainerButton] = useState<'move' | 'push' | 'tele' | 'wall' | 'mine' | 'sling' | 'landmark' | 'lucky'>('move');
 
   const [winner, setWinner] = useState<'blue' | 'red' | null>(null);
+
+  const hasBlueSideMines = mines.some(coord => {
+    const [mx] = coord.split(',').map(Number);
+    return mx < widthSize / 2;
+  });
+  const hasRedSideMines = mines.some(coord => {
+    const [mx] = coord.split(',').map(Number);
+    return mx >= widthSize / 2;
+  });
 
   // Check win conditions (Finish Line goals at y <= 8)
   useEffect(() => {
@@ -405,10 +440,13 @@ export default function App() {
             walls: [],
             mines: [],
             minesRevealed: false,
+            blueMinesRevealed: false,
+            redMinesRevealed: false,
             logs: [],
             sprintBlue: 0,
             sprintRed: 0,
             totalRaised: 0,
+            landmarks: [],
             updatedAt: serverTimestamp()
           });
         }
@@ -437,9 +475,12 @@ export default function App() {
           setWalls(data.walls || []);
           setMines(data.mines || []);
           setMinesRevealed(data.minesRevealed || false);
+          setBlueMinesRevealed(data.blueMinesRevealed !== undefined ? data.blueMinesRevealed : (data.minesRevealed || false));
+          setRedMinesRevealed(data.redMinesRevealed !== undefined ? data.redMinesRevealed : (data.minesRevealed || false));
           setLogs(data.logs || []);
           setSprintBlue(data.sprintBlue || 0);
           setSprintRed(data.sprintRed || 0);
+          setLandmarks(data.landmarks || []);
         }
       }
     }, (error) => {
@@ -495,8 +536,8 @@ export default function App() {
     // Center the grid beautifully in the viewport on mount
     const vw = viewport.clientWidth || window.innerWidth;
     const vh = viewport.clientHeight || window.innerHeight;
-    const gw = size * 4;
-    const gh = size * 4;
+    const gw = widthSize * 4;
+    const gh = heightSize * 4;
     const isMobile = window.innerWidth < 768;
     transformRef.current.scale = isMobile ? 0.45 : 1.0;
     transformRef.current.x = (vw - gw * transformRef.current.scale) / 2;
@@ -510,6 +551,7 @@ export default function App() {
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
+      setLiveTracking(false); // Cancel live tracking on wheel zoom
       const zoomSpeed = 0.0015;
       const delta = -e.deltaY * zoomSpeed;
       const prevScale = transformRef.current.scale;
@@ -519,8 +561,8 @@ export default function App() {
       if (isMobileNow) {
         const rvw = viewport.clientWidth || window.innerWidth;
         const rvh = viewport.clientHeight || window.innerHeight;
-        const rgw = size * 4;
-        const rgh = size * 4;
+        const rgw = widthSize * 4;
+        const rgh = heightSize * 4;
         transformRef.current.x = (rvw - rgw * newScale) / 2;
         transformRef.current.y = (rvh - rgh * newScale) / 2;
       } else {
@@ -539,6 +581,7 @@ export default function App() {
       if ((e.target as HTMLElement).closest('button, input, select, textarea, a') || isWallBuilding) return;
       const isMobileNow = window.innerWidth < 768;
       if (isMobileNow) return; // Block moving on mobile entirely!
+      setLiveTracking(false); // Cancel live tracking on manual pan drag
       isDragging.current = true;
       startPos.current = {
         x: e.clientX - transformRef.current.x,
@@ -566,8 +609,8 @@ export default function App() {
       if (isMobileNow) {
         const rvw = viewport.clientWidth || window.innerWidth;
         const rvh = viewport.clientHeight || window.innerHeight;
-        const rgw = size * 4;
-        const rgh = size * 4;
+        const rgw = widthSize * 4;
+        const rgh = heightSize * 4;
         transformRef.current.scale = 0.45;
         transformRef.current.x = (rvw - rgw * transformRef.current.scale) / 2;
         transformRef.current.y = (rvh - rgh * transformRef.current.scale) / 2;
@@ -603,9 +646,9 @@ export default function App() {
         let nextPos = { ...bluePos };
         let nextRot = blueRot;
         if (key === 'w' && bluePos.y > 0) { nextPos.y -= 1; nextRot = -90; }
-        if (key === 's' && bluePos.y < size - 1) { nextPos.y += 1; nextRot = 90; }
+        if (key === 's' && bluePos.y < heightSize - 1) { nextPos.y += 1; nextRot = 90; }
         if (key === 'a' && bluePos.x > 0) { nextPos.x -= 1; nextRot = 180; }
-        if (key === 'd' && bluePos.x < (size / 2) - 1) { nextPos.x += 1; nextRot = 0; }
+        if (key === 'd' && bluePos.x < (widthSize / 2) - 1) { nextPos.x += 1; nextRot = 0; }
         
         if (nextPos.x !== bluePos.x || nextPos.y !== bluePos.y) {
           if (walls.includes(`${nextPos.x},${nextPos.y}`) || isObstacleVal(nextPos.x, nextPos.y)) return;
@@ -637,9 +680,9 @@ export default function App() {
         let nextPos = { ...redPos };
         let nextRot = redRot;
         if (key === 'arrowup' && redPos.y > 0) { nextPos.y -= 1; nextRot = -90; }
-        if (key === 'arrowdown' && redPos.y < size - 1) { nextPos.y += 1; nextRot = 90; }
-        if (key === 'arrowleft' && redPos.x > size / 2) { nextPos.x -= 1; nextRot = 180; }
-        if (key === 'arrowright' && redPos.x < size - 1) { nextPos.x += 1; nextRot = 0; }
+        if (key === 'arrowdown' && redPos.y < heightSize - 1) { nextPos.y += 1; nextRot = 90; }
+        if (key === 'arrowleft' && redPos.x > widthSize / 2) { nextPos.x -= 1; nextRot = 180; }
+        if (key === 'arrowright' && redPos.x < widthSize - 1) { nextPos.x += 1; nextRot = 0; }
         
         if (nextPos.x !== redPos.x || nextPos.y !== redPos.y) {
           if (walls.includes(`${nextPos.x},${nextPos.y}`) || isObstacleVal(nextPos.x, nextPos.y)) return;
@@ -669,7 +712,33 @@ export default function App() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [size, bluePos, blueRot, blueTrail, redPos, redRot, redTrail, walls, mines, userRole, user, profile]);
+  }, [widthSize, heightSize, bluePos, blueRot, blueTrail, redPos, redRot, redTrail, walls, mines, userRole, user, profile]);
+
+  // Center & Lock on player team's baby in real time
+  const centerOnBaby = () => {
+    const viewport = viewportRef.current;
+    const grid = gridRef.current;
+    if (!viewport || !grid) return;
+
+    const trackedSide = userRole === 'blue' ? 'blue' : (userRole === 'red' ? 'red' : mobileActiveSide);
+    const pos = trackedSide === 'blue' ? bluePos : redPos;
+    if (!pos) return;
+
+    const vw = viewport.clientWidth || window.innerWidth;
+    const vh = viewport.clientHeight || window.innerHeight;
+    const scale = transformRef.current.scale;
+
+    transformRef.current.x = vw / 2 - (pos.x * 4) * scale;
+    transformRef.current.y = vh / 2 - (pos.y * 4) * scale;
+
+    grid.style.transform = `translate(${transformRef.current.x}px, ${transformRef.current.y}px) scale(${scale})`;
+  };
+
+  useEffect(() => {
+    if (liveTracking) {
+      centerOnBaby();
+    }
+  }, [liveTracking, bluePos, redPos, userRole, mobileActiveSide]);
 
   const spendTokens = async (side: 'blue' | 'red', cost: number) => {
     if (!user) {
@@ -744,14 +813,14 @@ export default function App() {
     for (let i = 0; i < actualSteps; i++) {
         const temp = { ...nextPos };
         if (direction === 'up' && nextPos.y > 0) { nextPos.y -= 1; nextRot = -90; }
-        if (direction === 'down' && nextPos.y < size - 1) { nextPos.y += 1; nextRot = 90; }
+        if (direction === 'down' && nextPos.y < heightSize - 1) { nextPos.y += 1; nextRot = 90; }
         if (direction === 'left') {
            if (isBlueTarget && nextPos.x > 0) { nextPos.x -= 1; nextRot = 180; }
-           else if (!isBlueTarget && nextPos.x > size / 2) { nextPos.x -= 1; nextRot = 180; }
+           else if (!isBlueTarget && nextPos.x > widthSize / 2) { nextPos.x -= 1; nextRot = 180; }
         }
         if (direction === 'right') {
-           if (isBlueTarget && nextPos.x < (size / 2) - 1) { nextPos.x += 1; nextRot = 0; }
-           else if (!isBlueTarget && nextPos.x < size - 1) { nextPos.x += 1; nextRot = 0; }
+           if (isBlueTarget && nextPos.x < (widthSize / 2) - 1) { nextPos.x += 1; nextRot = 0; }
+           else if (!isBlueTarget && nextPos.x < widthSize - 1) { nextPos.x += 1; nextRot = 0; }
         }
         
         if (nextPos.x !== temp.x || nextPos.y !== temp.y) {
@@ -850,11 +919,11 @@ export default function App() {
     for (const pt of linePoints) {
       let inBound = false;
       if (isBlueTarget) {
-        if (pt.x >= 0 && pt.x < size / 2 && pt.y >= 0 && pt.y < size) {
+        if (pt.x >= 0 && pt.x < widthSize / 2 && pt.y >= 0 && pt.y < heightSize) {
           inBound = true;
         }
       } else {
-        if (pt.x >= size / 2 && pt.x < size && pt.y >= 0 && pt.y < size) {
+        if (pt.x >= widthSize / 2 && pt.x < widthSize && pt.y >= 0 && pt.y < heightSize) {
           inBound = true;
         }
       }
@@ -926,8 +995,8 @@ export default function App() {
     if (isMobile) {
       const vw = viewport.clientWidth || window.innerWidth;
       const vh = viewport.clientHeight || window.innerHeight;
-      const gw = size * 4;
-      const gh = size * 4;
+      const gw = widthSize * 4;
+      const gh = heightSize * 4;
       transformRef.current.x = (vw - gw * newScale) / 2;
       transformRef.current.y = (vh - gh * newScale) / 2;
     } else {
@@ -985,11 +1054,11 @@ export default function App() {
     let ny = current.y + dy;
     
     // Bounds check
-    nx = Math.max(0, Math.min(size - 1, nx));
-    ny = Math.max(0, Math.min(size - 1, ny));
+    nx = Math.max(0, Math.min(widthSize - 1, nx));
+    ny = Math.max(0, Math.min(heightSize - 1, ny));
     // Side lock
-    if (side === 'blue') nx = Math.min((size / 2) - 1, nx);
-    else nx = Math.max(size / 2, nx);
+    if (side === 'blue') nx = Math.min((widthSize / 2) - 1, nx);
+    else nx = Math.max(widthSize / 2, nx);
 
     const update: any = {};
 
@@ -1035,12 +1104,12 @@ export default function App() {
         let rx, ry;
         if (side === 'blue') {
             // Target Red's side (right half)
-            rx = Math.floor(Math.random() * (size / 2)) + (size / 2);
+            rx = Math.floor(Math.random() * (widthSize / 2)) + (widthSize / 2);
         } else {
             // Target Blue's side (left half)
-            rx = Math.floor(Math.random() * (size / 2));
+            rx = Math.floor(Math.random() * (widthSize / 2));
         }
-        ry = Math.floor(Math.random() * size);
+        ry = Math.floor(Math.random() * heightSize);
         newMines.push(`${rx},${ry}`);
     }
     setMines(newMines);
@@ -1068,65 +1137,191 @@ export default function App() {
   };
 
   const handleRevealMines = async (side: 'blue' | 'red') => {
+    // Only the team whose territory has these mines can reveal them.
+    const sideMines = mines.filter(coord => {
+      const [mx] = coord.split(',').map(Number);
+      return side === 'blue' ? (mx < widthSize / 2) : (mx >= widthSize / 2);
+    });
+
+    if (sideMines.length === 0) {
+      addLog(`⚠️ Reclaim Notice: There are no mines deployed on ${side === 'blue' ? 'Blue' : 'Red'} territory to reveal!`);
+      return;
+    }
+
+    const isSideRevealed = side === 'blue' ? blueMinesRevealed : redMinesRevealed;
+    if (isSideRevealed) {
+      addLog(`⚠️ Reclaim Notice: Mines on specified ${side === 'blue' ? 'Blue' : 'Red'} territory are already revealed!`);
+      return;
+    }
+
     const cost = 100;
     const success = await spendTokens(side, cost);
     if (!success) return;
 
-    setMinesRevealed(true);
-    addLog(`${side === 'blue' ? 'Blue' : 'Red'} revealed all hidden mines!`);
-    await updateFirebase({ 
-        minesRevealed: true
-    });
+    if (side === 'blue') {
+      setBlueMinesRevealed(true);
+      await updateFirebase({ blueMinesRevealed: true });
+    } else {
+      setRedMinesRevealed(true);
+      await updateFirebase({ redMinesRevealed: true });
+    }
+    
+    addLog(`👁️ ${side === 'blue' ? 'Blue' : 'Red'} paid ${cost} tokens and revealed hidden enemy mines in their territory!`);
   };
 
   const handleClearMines = async (side: 'blue' | 'red') => {
-    const cost = 50;
+    const sideMines = mines.filter(coord => {
+      const [mx] = coord.split(',').map(Number);
+      return side === 'blue' ? (mx < widthSize / 2) : (mx >= widthSize / 2);
+    });
+
+    if (sideMines.length === 0) {
+      addLog(`⚠️ Reclaim Notice: There are no mines in ${side === 'blue' ? 'Blue' : 'Red'} territory to clear!`);
+      return;
+    }
+
+    const isSideRevealed = side === 'blue' ? blueMinesRevealed : redMinesRevealed;
+    if (!isSideRevealed) {
+      addLog(`⚠️ Reclaim Notice: You must reveal hidden mines before you can clear them!`);
+      return;
+    }
+
+    const cost = 150;
     const success = await spendTokens(side, cost);
     if (!success) return;
 
-    setMines([]);
-    setMinesRevealed(false);
-    addLog(`${side === 'blue' ? 'Blue' : 'Red'} cleared all mines from the field!`);
-    await updateFirebase({ 
-        mines: [],
-        minesRevealed: false
+    // Remaining mines on the opposite player's side
+    const remainingMines = mines.filter(coord => {
+      const [mx] = coord.split(',').map(Number);
+      return side === 'blue' ? (mx >= widthSize / 2) : (mx < widthSize / 2);
     });
+
+    setMines(remainingMines);
+    if (side === 'blue') {
+      setBlueMinesRevealed(false);
+      await updateFirebase({
+        mines: remainingMines,
+        blueMinesRevealed: false
+      });
+    } else {
+      setRedMinesRevealed(false);
+      await updateFirebase({
+        mines: remainingMines,
+        redMinesRevealed: false
+      });
+    }
+
+    addLog(`🧹 ${side === 'blue' ? 'Blue' : 'Red'} paid ${cost} tokens and cleared all enemy mines in their territory!`);
   };
 
   const handleGridClick = async (e: React.MouseEvent) => {
-    if (!isWallBuilding) return;
-    
     const rect = gridRef.current?.getBoundingClientRect();
     if (!rect) return;
     
     const x = Math.floor((e.clientX - rect.left) / (4 * transformRef.current.scale));
     const y = Math.floor((e.clientY - rect.top) / (4 * transformRef.current.scale));
 
-    if (isObstacleVal(x, y)) {
-      addLog("🚧 Core Battle Notice: Erecting custom barriers on permanent structures is forbidden!");
+    // Case 1: Placing a 4x4 landmark!
+    if (isLandmarkPlacing) {
+      if (x < 0 || x > widthSize - 4 || y < 0 || y > heightSize - 4) {
+        addLog("🏰 Landmark Notice: Landmark must be fully within map boundaries (top-left placement out of bounds)!");
+        return;
+      }
+
+      const cost = 50;
+      const side = isLandmarkPlacing.side;
+      const success = await spendTokens(side, cost);
+      if (!success) {
+        setIsLandmarkPlacing(null);
+        return;
+      }
+
+      const creatorName = user?.email?.split('@')[0] || (side === 'blue' ? 'Blue Leader' : 'Red Leader');
+      const newLandmark = {
+        id: `landmark-${Date.now()}`,
+        x,
+        y,
+        name: isLandmarkPlacing.name || "Sovereign Outpost",
+        message: isLandmarkPlacing.message || "A majestic monument stands here!",
+        color: isLandmarkPlacing.color || (side === 'blue' ? '#3b82f6' : '#ef4444'),
+        creatorSide: side,
+        creatorName,
+        createdAt: Date.now()
+      };
+
+      const updatedLandmarks = [...landmarks, newLandmark];
+      setLandmarks(updatedLandmarks);
+      addLog(`🏰 ${side === 'blue' ? 'Blue' : 'Red'} built landmark "${newLandmark.name}" at (${x},${y})!`);
+      setIsLandmarkPlacing(null);
+      await updateFirebase({
+        landmarks: updatedLandmarks
+      });
       return;
     }
 
-    const costPerPixel = 2;
-    const side = isWallBuilding.side;
-    const success = await spendTokens(side, costPerPixel);
-    if (!success) return;
+    // Case 2: Building wall pixels
+    if (isWallBuilding) {
+      if (isObstacleVal(x, y)) {
+        addLog("🚧 Core Battle Notice: Erecting custom barriers on permanent structures is forbidden!");
+        return;
+      }
 
-    const newWalls = [...walls, `${x},${y}`];
-    
-    // Also track local budget (this budget is now redundant but kept for flow)
-    const newBudget = isWallBuilding.budget - costPerPixel;
+      const side = isWallBuilding.side;
 
-    setWalls(newWalls);
-    addLog(`${side === 'blue' ? 'Blue' : 'Red'} built a wall pixel at ${x},${y}`);
-    await updateFirebase({ 
-        walls: newWalls
+      // Determine side-specific bounds for row blockage check
+      const minX = side === 'blue' ? 0 : Math.floor(widthSize / 2);
+      const maxX = side === 'blue' ? Math.floor(widthSize / 2) - 1 : widthSize - 1;
+      const sideWidth = maxX - minX + 1;
+
+      // Count blocked cells on row y including the new proposed cell
+      let blockedCount = 0;
+      for (let tx = minX; tx <= maxX; tx++) {
+        const isProposed = (tx === x);
+        const isExistingWall = walls.includes(`${tx},${y}`);
+        const isPermanentObstacle = isObstacleVal(tx, y);
+        const isLandmarkObstacle = landmarks && landmarks.some(lm => {
+          return tx >= lm.x && tx < lm.x + 4 && y >= lm.y && y < lm.y + 4;
+        });
+
+        if (isProposed || isExistingWall || isPermanentObstacle || isLandmarkObstacle) {
+          blockedCount++;
+        }
+      }
+
+      if (blockedCount >= sideWidth) {
+        addLog(`🚧 Blockade Refused: Completely barricading row ${y} is forbidden. You must leave at least one passable space!`);
+        return;
+      }
+
+      const costPerPixel = 2;
+      const success = await spendTokens(side, costPerPixel);
+      if (!success) return;
+
+      const newWalls = [...walls, `${x},${y}`];
+      
+      const newBudget = isWallBuilding.budget - costPerPixel;
+
+      setWalls(newWalls);
+      addLog(`${side === 'blue' ? 'Blue' : 'Red'} built a wall pixel at ${x},${y}`);
+      await updateFirebase({ 
+          walls: newWalls
+      });
+
+      if (newBudget <= 0) {
+        setIsWallBuilding(null);
+      } else {
+        setIsWallBuilding({ ...isWallBuilding, budget: newBudget });
+      }
+      return;
+    }
+
+    // Case 3: Inspecting a landmark
+    const clickedLandmark = landmarks.find(lm => {
+      return x >= lm.x && x < lm.x + 4 && y >= lm.y && y < lm.y + 4;
     });
 
-    if (newBudget <= 0) {
-      setIsWallBuilding(null);
-    } else {
-      setIsWallBuilding({ ...isWallBuilding, budget: newBudget });
+    if (clickedLandmark) {
+      setSelectedLandmark(clickedLandmark);
     }
   };
 
@@ -1143,6 +1338,8 @@ export default function App() {
       walls: [],
       mines: [],
       minesRevealed: false,
+      blueMinesRevealed: false,
+      redMinesRevealed: false,
       logs: [],
       sprintBlue: 0,
       sprintRed: 0
@@ -1157,6 +1354,8 @@ export default function App() {
     setWalls([]);
     setMines([]);
     setMinesRevealed(false);
+    setBlueMinesRevealed(false);
+    setRedMinesRevealed(false);
     setLogs([]);
     setSprintBlue(0);
     setSprintRed(0);
@@ -1336,13 +1535,13 @@ export default function App() {
           <motion.div 
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="max-w-xl w-full bg-[#fdfaf2] border-4 border-black rounded-2xl md:rounded-3xl p-6 sm:p-8 text-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden my-auto"
+            className="max-w-xl w-full bg-[#fdfaf2] border-4 border-black rounded-2xl md:rounded-3xl p-6 sm:p-8 text-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden my-auto animate-fadeIn"
           >
             {/* Title & Close button */}
             <div className="flex justify-between items-center border-b-2 border-black pb-3 mb-4">
               <div className="flex items-center gap-2">
-                <span className="text-2xl">🍼</span>
-                <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tight text-black">BABY PUSH! GUIDE</h2>
+                <span className="text-2xl animate-spin" style={{ animationDuration: '6s' }}>🍼</span>
+                <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tight text-black">BABY PUSH! ACADEMY</h2>
               </div>
               <button 
                 onClick={handleCloseOnboarding} 
@@ -1353,17 +1552,18 @@ export default function App() {
             </div>
 
             {/* Step Navigation Tabs */}
-            <div className="grid grid-cols-3 gap-2 mb-6">
+            <div className="grid grid-cols-4 gap-1 sm:gap-2 mb-6">
               {[
-                { title: "🐣 Concept", icon: "🐣" },
+                { title: "🐣 Goal", icon: "🐣" },
                 { title: "🎮 Strategy", icon: "🎮" },
+                { title: "🕹️ Buttons", icon: "🕹️" },
                 { title: "💝 Charity", icon: "💝" }
               ].map((tab, idx) => (
                 <button
                   key={idx}
                   type="button"
                   onClick={() => setOnboardingStep(idx)}
-                  className={`py-1.5 px-1 rounded-xl border-2 border-black font-black text-[10px] sm:text-xs uppercase tracking-tight transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 ${
+                  className={`py-1.5 px-1 rounded-xl border-2 border-black font-black text-[9px] sm:text-xs uppercase tracking-tight transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 ${
                     onboardingStep === idx 
                       ? "bg-yellow-300 text-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]" 
                       : "bg-white text-black/60 hover:text-black"
@@ -1375,23 +1575,27 @@ export default function App() {
             </div>
 
             {/* Slide Content */}
-            <div className="min-h-[220px] flex flex-col justify-between">
+            <div className="min-h-[290px] md:min-h-[280px] flex flex-col justify-between">
               {onboardingStep === 0 && (
                 <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}>
                   <h3 className="text-base sm:text-lg font-black uppercase tracking-tight text-[#3b82f6] mb-2 flex items-center gap-1.5">
                     🐣 Welcome to the Baby Grid!
                   </h3>
-                  <p className="text-xs sm:text-sm text-black/80 font-medium leading-relaxed mb-4">
-                    Baby Push! is an interactive, real-time multiplayer <strong>Territory War</strong>. Drive your stroller vehicle across the canvas, painting the grid with your team's signature trail to capture nodes and dominate the zone.
+                  <p className="text-xs sm:text-sm text-black/80 font-medium leading-relaxed mb-3">
+                    Baby Push! is an interactive, real-time multiplayer <strong>Territory War & Goal-Line Race</strong>. Drive your stroller vehicle across the canvas, painting the grid with your team's signature trail to claim territory.
+                  </p>
+                  <h4 className="text-[10px] font-extrabold uppercase mt-1.5 mb-1 text-black/50 tracking-wider">🏁 Ultimate Win Condition</h4>
+                  <p className="text-xs text-black/75 leading-relaxed mb-4">
+                    The absolute goal is to steer your team's baby vehicle all the way to the top of the map to cross the <strong>Finish Goal Area</strong>! Or cooperate with teammates to expand total zone paint coverage while obstructing opponents from getting through.
                   </p>
                   <div className="grid grid-cols-2 gap-3 bg-yellow-50 border-2 border-dashed border-black/30 p-3 rounded-xl">
                     <div className="flex items-center gap-2">
                       <div className="w-5 h-5 bg-[#3b82f6] rounded border border-black flex items-center justify-center text-white text-[10px] font-black">B</div>
-                      <span className="text-[11px] font-black uppercase">Team Blue: Defense</span>
+                      <span className="text-[11px] font-black uppercase">Team Blue (Left Spawn)</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="w-5 h-5 bg-[#ef4444] rounded border border-black flex items-center justify-center text-white text-[10px] font-black">R</div>
-                      <span className="text-[11px] font-black uppercase">Team Red: Maneuver</span>
+                      <span className="text-[11px] font-black uppercase">Team Red (Right Spawn)</span>
                     </div>
                   </div>
                 </motion.div>
@@ -1408,21 +1612,151 @@ export default function App() {
                   <ul className="text-[11px] sm:text-xs text-black/80 font-bold space-y-1.5">
                     <li className="flex items-start gap-1.5">
                       <span>🚧</span>
-                      <div><strong>Erect Walls:</strong> Block off narrow choke points and shelter your team's territory.</div>
+                      <div><strong>Erect Walls:</strong> Block off narrow choke points and shelter your team's territory from enemy sliders.</div>
                     </li>
                     <li className="flex items-start gap-1.5">
                       <span>💣</span>
-                      <div><strong>Deploy Minefields:</strong> Seed 20 invisible mines. Detonating a mine blows strollers back to spawn!</div>
+                      <div><strong>Deploy Minefields:</strong> Seed 20 invisible mines on enemy soil. Detonating a mine blows strikers back to spawn!</div>
                     </li>
                     <li className="flex items-start gap-1.5">
                       <span>🏹</span>
-                      <div><strong>Baby Slingshot:</strong> Paint dynamic, wide-scale pixels at a distance with drag-and-launch.</div>
+                      <div><strong>Baby Slingshot:</strong> Paint dynamic, wide-scale circular zones at great distance with pull-and-release physics.</div>
                     </li>
                   </ul>
                 </motion.div>
               )}
 
               {onboardingStep === 2 && (
+                <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}>
+                  <h3 className="text-base sm:text-lg font-black uppercase tracking-tight text-purple-700 mb-1 flex items-center gap-1.5">
+                    🕹️ Learn about each Button
+                  </h3>
+                  <p className="text-[10px] sm:text-xs text-black/60 mb-3 font-black uppercase">
+                    Select a button icon to read its tactical role & cost:
+                  </p>
+
+                  {/* Button Chooser Row */}
+                  <div className="flex flex-wrap gap-1.5 p-2 bg-yellow-50 border-2 border-dashed border-black/30 rounded-xl mb-3 justify-center sm:justify-start">
+                    {[
+                      { id: 'move', label: '💥 Move', color: 'bg-blue-100' },
+                      { id: 'push', label: '♟️ Push', color: 'bg-emerald-100' },
+                      { id: 'tele', label: '🔮 Tele', color: 'bg-indigo-100' },
+                      { id: 'wall', label: '🚧 Wall', color: 'bg-amber-100' },
+                      { id: 'mine', label: '💣 Mine', color: 'bg-red-100' },
+                      { id: 'sling', label: '🏹 Sling', color: 'bg-rose-100' },
+                      { id: 'landmark', label: '🏰 Mark', color: 'bg-emerald-250' },
+                      { id: 'lucky', label: '🎰 Lucky', color: 'bg-yellow-200' },
+                    ].map((btn) => (
+                      <button
+                        key={btn.id}
+                        type="button"
+                        onClick={() => setSelectedExplainerButton(btn.id as any)}
+                        className={`px-2 py-1 text-[9px] font-black uppercase rounded-lg border-2 border-black transition-all cursor-pointer ${
+                          selectedExplainerButton === btn.id 
+                            ? 'bg-yellow-300 font-extrabold scale-105 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]' 
+                            : `${btn.color} hover:bg-white/80`
+                        }`}
+                      >
+                        {btn.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Explainer Box */}
+                  <div className="border-2 border-black rounded-xl p-3 bg-white min-h-[95px] text-left shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                    {selectedExplainerButton === 'move' && (
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="font-black text-xs uppercase text-blue-600">💥 BATCH MOVE</span>
+                          <span className="text-[8px] bg-sky-100 text-sky-800 border border-sky-300 px-1 py-0.5 rounded font-black">1 Token / Step</span>
+                        </div>
+                        <p className="text-[11px] leading-snug text-black/80 font-medium">
+                          Slide your baby's stroller a specified distance in a preset direction. Excellent for carving out major initial trails in wide open lanes.
+                        </p>
+                      </div>
+                    )}
+                    {selectedExplainerButton === 'push' && (
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="font-black text-xs uppercase text-emerald-600">♟️ SPACE PUSH</span>
+                          <span className="text-[8px] bg-emerald-100 text-emerald-800 border border-emerald-300 px-1 py-0.5 rounded font-black">2 Tokens / Step</span>
+                        </div>
+                        <p className="text-[11px] leading-snug text-black/80 font-medium">
+                          Force-paints and captures nodes in a dense surrounding block around your baby stroller. Essential for defensive claims and establishing blockades.
+                        </p>
+                      </div>
+                    )}
+                    {selectedExplainerButton === 'tele' && (
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="font-black text-xs uppercase text-indigo-600">🔮 INSTANT TELEPORT</span>
+                          <span className="text-[8px] bg-indigo-100 text-indigo-800 border border-indigo-300 px-1 py-0.5 rounded font-black">5 Tokens</span>
+                        </div>
+                        <p className="text-[11px] leading-snug text-black/80 font-medium">
+                          Evade traps and solid enemy partitions! Immediately teleports your baby cruiser to a random secure spot within a nearby radius.
+                        </p>
+                      </div>
+                    )}
+                    {selectedExplainerButton === 'wall' && (
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="font-black text-xs uppercase text-amber-600">🚧 ERECT CHOKE WALLS</span>
+                          <span className="text-[8px] bg-amber-100 text-amber-800 border border-amber-300 px-1 py-0.5 rounded font-black">2 Tokens / Pixel block</span>
+                        </div>
+                        <p className="text-[11px] leading-snug text-black/80 font-medium">
+                          Erect concrete wall segments. Specify your budget and then simple click any free point on the live arena grid to erect protective fortresses.
+                        </p>
+                      </div>
+                    )}
+                    {selectedExplainerButton === 'mine' && (
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="font-black text-xs uppercase text-red-600">💣 SEED STEALTH MINES</span>
+                          <span className="text-[8px] bg-red-100 text-red-800 border border-red-350 px-1 py-0.5 rounded font-black">20 Tokens</span>
+                        </div>
+                        <p className="text-[11px] leading-snug text-black/80 font-medium">
+                          Sows 20 invisible danger landmines directly deep into opponent territory. Any stroller running into one explodes, setting them all the way back to startup spawn!
+                        </p>
+                      </div>
+                    )}
+                    {selectedExplainerButton === 'sling' && (
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="font-black text-xs uppercase text-rose-600">🏹 LAUNCH SLINGSHOT</span>
+                          <span className="text-[8px] bg-rose-100 text-rose-800 border border-rose-300 px-1 py-0.5 rounded font-black">100 Tokens</span>
+                        </div>
+                        <p className="text-[11px] leading-snug text-black/80 font-medium">
+                          Drag and release physical slingshot bands on the active canvas. Flings a paint bomb at great distances, claiming wide zones instantly!
+                        </p>
+                      </div>
+                    )}
+                    {selectedExplainerButton === 'landmark' && (
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="font-black text-xs uppercase text-emerald-800">🏰 ERECT LANDMARK</span>
+                          <span className="text-[8px] bg-emerald-100 text-emerald-800 border border-emerald-300 px-1 py-0.5 rounded font-black">50 Tokens</span>
+                        </div>
+                        <p className="text-[11px] leading-snug text-black/80 font-medium">
+                          Create a magnificent 4x4 permanent structure anywhere on the grid! Choose a unique name, customized color, and personalized message that any team player can click and inspect.
+                        </p>
+                      </div>
+                    )}
+                    {selectedExplainerButton === 'lucky' && (
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="font-black text-xs uppercase text-yellow-700">🎰 ROTATE JACKPOT</span>
+                          <span className="text-[8px] bg-yellow-100 text-yellow-800 border border-yellow-350 px-1 py-0.5 rounded font-black">10 Tokens</span>
+                        </div>
+                        <p className="text-[11px] leading-snug text-black/80 font-medium">
+                          Spin the magical mechanical jackpot wheel! Chance to hit a jackpot, automatically gifting your baby from 1 to 50 free forward rollouts!
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+
+              {onboardingStep === 3 && (
                 <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}>
                   <h3 className="text-base sm:text-lg font-black uppercase tracking-tight text-emerald-700 mb-2 flex items-center gap-1.5">
                     💝 Powering Charity Global Aid
@@ -1433,7 +1767,7 @@ export default function App() {
                   <p className="text-xs text-black/70 leading-relaxed mb-3">
                     Refill tokens with <strong>Starter, Tactician, or Tycoon</strong> packs inside the store. Real-world payments go directly to aid channels, logging your name onto our live <strong>Hall of Fame Leaderboard</strong>.
                   </p>
-                  <div className="bg-[#ecfdf5] border-2 border-[#10b981] p-3 rounded-xl text-center">
+                  <div className="bg-[#ecfdf5] border-2 border-[#10b981] p-3 rounded-xl text-center font-bold">
                     <span className="text-[10px] font-black text-emerald-800 uppercase tracking-wider leading-none">
                       🏆 100% OF REAL STORE COINS DIRECTLY AID HUMANITARIAN EFFORTS
                     </span>
@@ -1458,7 +1792,7 @@ export default function App() {
 
                 {/* Dot Index */}
                 <div className="flex gap-1.5">
-                  {[0, 1, 2].map((i) => (
+                  {[0, 1, 2, 3].map((i) => (
                     <div
                       key={i}
                       onClick={() => setOnboardingStep(i)}
@@ -1469,10 +1803,10 @@ export default function App() {
                   ))}
                 </div>
 
-                {onboardingStep < 2 ? (
+                {onboardingStep < 3 ? (
                   <button
                     type="button"
-                    onClick={() => setOnboardingStep((prev) => Math.min(2, prev + 1))}
+                    onClick={() => setOnboardingStep((prev) => Math.min(3, prev + 1))}
                     className="px-4 py-1.5 bg-yellow-300 hover:bg-yellow-400 text-black border-2 border-black text-xs font-black uppercase rounded-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:translate-x-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] cursor-pointer select-none"
                   >
                     Next &rarr;
@@ -1552,6 +1886,78 @@ export default function App() {
                 }}
                 onCancel={() => setActiveModal(null)}
               />
+            ) : activeModal.type === 'landmark' ? (
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                const name = formData.get('landmark-name') as string;
+                const message = formData.get('landmark-message') as string;
+                const color = formData.get('landmark-color') as string;
+                setActiveModal(null);
+                setIsLandmarkPlacing({
+                  name,
+                  message,
+                  color,
+                  side: activeModal.side
+                });
+                addLog(`⚙️ Configured landmark logic. Click anywhere on grid to place!`);
+              }}>
+                <div className="space-y-4 text-left">
+                  <p className="text-black/85 text-[10px] font-bold leading-relaxed">
+                    Erect a permanent 4x4 landmark structure on the arena grid. Custom landmarks cost <span className="font-extrabold text-emerald-600">50 tokens</span> and display your custom message instantly when clicked!
+                  </p>
+                  <div>
+                    <label className="text-black/70 font-black text-[10px] uppercase block mb-1">Landmark Name</label>
+                    <input 
+                      name="landmark-name" 
+                      type="text" 
+                      maxLength={30}
+                      placeholder="e.g., Mount Olympus"
+                      className="w-full bg-yellow-50 border-3 border-black rounded-xl px-3 py-2 text-black font-black outline-none focus:bg-yellow-105 text-xs"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-black/70 font-black text-[10px] uppercase block mb-1">Custom Message</label>
+                    <textarea 
+                      name="landmark-message"
+                      maxLength={120}
+                      rows={3}
+                      placeholder="e.g., Welcome to the peak!"
+                      className="w-full bg-yellow-50 border-3 border-black rounded-xl px-3 py-2 text-black font-black outline-none focus:bg-yellow-105 text-xs resize-none"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-black/70 font-black text-[10px] uppercase block mb-1">Landmark Color</label>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        name="landmark-color" 
+                        type="color" 
+                        defaultValue={activeModal.side === 'blue' ? '#3b82f6' : '#ef4444'}
+                        className="w-10 h-10 border-3 border-black rounded-xl p-0.5 cursor-pointer bg-white"
+                        required
+                      />
+                      <span className="text-black/50 text-[10px] font-bold uppercase select-none">Choose any color</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 pt-2">
+                    <button 
+                      type="button"
+                      onClick={() => setActiveModal(null)}
+                      className="flex-1 px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-black border-2 border-black text-xs font-black uppercase transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      type="submit"
+                      className={`flex-1 px-4 py-2 rounded-xl text-white text-xs font-black uppercase border-2 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer ${activeModal.side === 'blue' ? 'bg-[#3b82f6]' : 'bg-[#ef4444]'}`}
+                    >
+                      Confirm
+                    </button>
+                  </div>
+                </div>
+              </form>
             ) : activeModal.type === 'move' || activeModal.type === 'grid' ? (
               <form onSubmit={(e) => {
                 e.preventDefault();
@@ -1790,6 +2196,56 @@ export default function App() {
         </div>
       )}
 
+      {/* Landmark Building Hint */}
+      {isLandmarkPlacing && (
+        <div className="fixed top-32 left-1/2 -translate-x-1/2 z-[80] text-black px-5 py-2.5 rounded-full font-black text-xs shadow-xl animate-bounce bg-emerald-300 border-2 border-black flex items-center gap-2 select-none">
+          <span>🏰</span>
+          <span>CLICK MAP GRID TO POSITION "{isLandmarkPlacing.name.toUpperCase()}" (4x4 GRID)</span>
+          <button onClick={() => setIsLandmarkPlacing(null)} className="ml-3 text-black/60 hover:text-black underline text-[9.5px] font-black uppercase cursor-pointer">Cancel &times;</button>
+        </div>
+      )}
+
+      {/* Selected Landmark Info Modal */}
+      {selectedLandmark && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fadeIn">
+          <motion.div 
+            initial={{ scale: 0.95 }}
+            animate={{ scale: 1 }}
+            className="bg-white border-4 border-black p-6 rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] relative font-sans text-black w-80 text-left"
+          >
+            {/* Header side tag */}
+            <div className="absolute top-0 right-0 px-3 py-1 text-[9px] font-black uppercase text-white border-b-3 border-l-3 border-black rounded-tr-[12px]" style={{ backgroundColor: selectedLandmark.color || '#10b981' }}>
+              {selectedLandmark.creatorSide} team
+            </div>
+            
+            <div className="flex items-center gap-2 mb-3 mt-2 pr-12">
+              <span className="text-2xl select-none">🏰</span>
+              <div>
+                <h3 className="font-black text-base uppercase leading-tight tracking-tight break-words">{selectedLandmark.name}</h3>
+                <p className="text-[9px] text-black/50 font-black uppercase">Built by {selectedLandmark.creatorName}</p>
+              </div>
+            </div>
+
+            <div className="border-3 border-black rounded-2xl p-4 mb-4 font-bold text-xs bg-gray-50 leading-relaxed break-words" style={{ borderLeftColor: selectedLandmark.color || '#10b981', borderLeftWidth: '8px' }}>
+              "{selectedLandmark.message}"
+            </div>
+
+            <div className="flex items-center justify-between text-[8px] text-black/40 font-black uppercase mb-4">
+              <span>📍 GPS: {selectedLandmark.x}, {selectedLandmark.y} (4x4)</span>
+              <span>🕒 {new Date(selectedLandmark.createdAt).toLocaleDateString()}</span>
+            </div>
+
+            <button 
+              type="button"
+              onClick={() => setSelectedLandmark(null)}
+              className="w-full py-2 bg-yellow-300 hover:bg-yellow-400 text-black border-2 border-black rounded-xl text-xs font-black uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer text-center"
+            >
+              Close
+            </button>
+          </motion.div>
+        </div>
+      )}
+
       {/* FIXED BOTTOM HUD (DESKTOP) */}
       <div className="hidden md:flex fixed bottom-0 left-0 w-full h-24 bg-[#fcfaf4] border-t-4 border-black items-center justify-between px-8 z-50 shadow-[0_-5px_0px_0px_rgba(0,0,0,1)] text-black">
         
@@ -1872,21 +2328,23 @@ export default function App() {
               <span className="text-[6px] tracking-tighter">SLING</span>
             </button>
             
-            {mines.length > 0 && (
+            {hasBlueSideMines && (
               <div className="flex gap-1">
-                {!minesRevealed && (
+                {!blueMinesRevealed && (
                   <button 
                     onClick={() => handleRevealMines('blue')}
                     className="w-10 h-10 flex flex-col items-center justify-center bg-amber-200 border-2 border-black rounded-lg text-black font-bold text-[8px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+                    title="Reveal Hidden Mines (100 Tokens)"
                   >
                     <span>👁️</span>
                     <span className="text-[5px]">MINES</span>
                   </button>
                 )}
-                {minesRevealed && (
+                {blueMinesRevealed && (
                   <button 
                     onClick={() => handleClearMines('blue')}
                     className="w-10 h-10 flex flex-col items-center justify-center bg-rose-200 border-2 border-black rounded-lg text-black font-bold text-[8px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+                    title="Clear All Mines (150 Tokens)"
                   >
                     <span>🧹</span>
                     <span className="text-[5px]">CLEAR</span>
@@ -1931,6 +2389,16 @@ export default function App() {
               <Minus size={14} className="stroke-[3]" />
             </button>
           </div>
+
+          {/* Snap-Lock tracking button */}
+          <button 
+            onClick={() => setLiveTracking(!liveTracking)}
+            className={`w-28 h-12 flex flex-col items-center justify-center border-2 border-black rounded-xl hover:-translate-y-0.5 active:translate-y-0.5 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] text-black cursor-pointer uppercase transition-all ${liveTracking ? 'bg-emerald-300 font-extrabold shadow-[3px_3px_0px_0px_#047857]' : 'bg-gray-100 hover:bg-gray-200 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]'}`}
+            title="Snap Lock camera tracking onto our player baby"
+          >
+            <div className="text-[8px] font-black tracking-wider">📡 LIVE TRACK</div>
+            <div className="text-[7.5px] font-black mt-0.5">{liveTracking ? '🔒 LOCKED' : '🔓 OFF'}</div>
+          </button>
         </div>
 
         {/* Global Log Toggle */}
@@ -1966,21 +2434,23 @@ export default function App() {
         {/* Red Side HUD */}
         <div className={`flex items-center gap-4 transition-opacity ${!canControl('red') ? 'opacity-30 pointer-events-none grayscale' : ''}`}>
           <div className="flex gap-2">
-            {mines.length > 0 && (
+            {hasRedSideMines && (
               <div className="flex gap-1">
-                {!minesRevealed && (
+                {!redMinesRevealed && (
                   <button 
                     onClick={() => handleRevealMines('red')}
                     className="w-10 h-10 flex flex-col items-center justify-center bg-amber-200 border-2 border-black rounded-lg text-black font-bold text-[8px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+                    title="Reveal Hidden Mines (100 Tokens)"
                   >
                     <span>👁️</span>
                     <span className="text-[5px]">MINES</span>
                   </button>
                 )}
-                {minesRevealed && (
+                {redMinesRevealed && (
                   <button 
                     onClick={() => handleClearMines('red')}
                     className="w-10 h-10 flex flex-col items-center justify-center bg-rose-200 border-2 border-black rounded-lg text-black font-bold text-[8px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+                    title="Clear All Mines (150 Tokens)"
                   >
                     <span>🧹</span>
                     <span className="text-[5px]">CLEAR</span>
@@ -2147,10 +2617,10 @@ export default function App() {
         </div>
 
         {/* Dedicated Row if Mines on Field */}
-        {mines.length > 0 && (
+        {((mobileActiveSide === 'blue' && hasBlueSideMines) || (mobileActiveSide === 'red' && hasRedSideMines)) && (
           <div className="flex items-center justify-between gap-2 mb-2 p-1.5 bg-[#fdfcfa] border-2 border-dashed border-amber-400 rounded-xl">
             <span className="text-[9px] font-black uppercase text-amber-900 flex items-center gap-1">⚠️ MINES RECLAIM:</span>
-            {!minesRevealed ? (
+            {!((mobileActiveSide === 'blue' ? blueMinesRevealed : redMinesRevealed)) ? (
               <button 
                 type="button"
                 onClick={() => handleRevealMines(mobileActiveSide)}
@@ -2164,7 +2634,7 @@ export default function App() {
                 onClick={() => handleClearMines(mobileActiveSide)}
                 className="px-3 py-1 bg-rose-200 hover:bg-rose-300 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 cursor-pointer flex items-center gap-1.5"
               >
-                <span>🧹</span> CLEAR ALL (50)
+                <span>🧹</span> CLEAR (150)
               </button>
             )}
           </div>
@@ -2287,6 +2757,13 @@ export default function App() {
               title="How to Play"
             >
               ❓
+            </button>
+            <button 
+              onClick={() => setLiveTracking(!liveTracking)}
+              className={`border-2 border-black h-6 px-1.5 flex items-center justify-center rounded-lg shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 text-black font-black text-[9px] uppercase cursor-pointer select-none transition-all ${liveTracking ? 'bg-emerald-300 font-extrabold shadow-[1.5px_1.5px_0px_0px_#047857]' : 'bg-gray-100'}`}
+              title="Snap Lock camera tracking onto our player baby"
+            >
+              📡 {liveTracking ? 'LOCKED' : 'TRACK'}
             </button>
             <button 
               onClick={() => setIsLeaderboardOpen(true)}
@@ -2415,6 +2892,31 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Persistent Side Landmark ("Mark") Buttons */}
+      {/* Blue Landmark Side Button (Left Side) */}
+      <div className="fixed left-3 sm:left-4 top-[55%] -translate-y-1/2 z-[100] flex flex-col items-center gap-1">
+        <button
+          onClick={() => setActiveModal({ side: 'blue', type: 'landmark' })}
+          className="w-12 h-12 sm:w-14 sm:h-14 flex flex-col items-center justify-center bg-blue-105 hover:bg-blue-200 border-3 border-black rounded-2xl text-black font-black uppercase hover:-translate-y-1 active:translate-y-0 transition-transform shadow-[4px_4px_0px_0px_rgba(59,130,246,1)] hover:shadow-[5px_5px_0px_0px_rgba(59,130,246,1)] cursor-pointer text-[10px] tracking-tight group"
+          title="Build Blue Landmark (50 Tokens)"
+        >
+          <span className="text-xl sm:text-2xl group-hover:scale-125 transition-transform">🏰</span>
+          <span className="text-[7.5px] sm:text-[8px] font-black tracking-tight text-blue-700 leading-none mt-1">MARK B</span>
+        </button>
+      </div>
+
+      {/* Red Landmark Side Button (Right Side) */}
+      <div className="fixed right-3 sm:right-4 top-[55%] -translate-y-1/2 z-[100] flex flex-col items-center gap-1">
+        <button
+          onClick={() => setActiveModal({ side: 'red', type: 'landmark' })}
+          className="w-12 h-12 sm:w-14 sm:h-14 flex flex-col items-center justify-center bg-red-105 hover:bg-red-200 border-3 border-black rounded-2xl text-black font-black uppercase hover:-translate-y-1 active:translate-y-0 transition-transform shadow-[4px_4px_0px_0px_rgba(239,68,68,1)] hover:shadow-[5px_5px_0px_0px_rgba(239,68,68,1)] cursor-pointer text-[10px] tracking-tight group"
+          title="Build Red Landmark (50 Tokens)"
+        >
+          <span className="text-xl sm:text-2xl group-hover:scale-125 transition-transform">🏰</span>
+          <span className="text-[7.5px] sm:text-[8px] font-black tracking-tight text-red-700 leading-none mt-1">MARK R</span>
+        </button>
+      </div>
 
       {/* Leaderboard Modal */}
       {isLeaderboardOpen && (
@@ -2605,8 +3107,8 @@ export default function App() {
         ref={gridRef}
         className="relative flex-none origin-top-left bg-[#fffdfa] border-4 border-black rounded-3xl shadow-[12px_12px_0px_0px_#000]"
         style={{ 
-          width: `${size * 4}px`,
-          height: `${size * 4}px`,
+          width: `${widthSize * 4}px`,
+          height: `${heightSize * 4}px`,
           backgroundImage: 'linear-gradient(to right, rgba(0,0,0,0.06) 1px, transparent 1px), linear-gradient(to bottom, rgba(0,0,0,0.06) 1px, transparent 1px)',
           backgroundSize: '4px 4px'
         }}
@@ -2636,7 +3138,7 @@ export default function App() {
           className="absolute border-3 border-[#3b82f6] bg-blue-50/50 rounded-2xl flex flex-col items-center justify-center pointer-events-none"
           style={{
             left: `${(49 - 8) * 4}px`,
-            top: `${(195 - 10) * 4}px`,
+            top: `${(245 - 10) * 4}px`,
             width: `${16 * 4}px`,
             height: `${14 * 4}px`
           }}
@@ -2650,7 +3152,7 @@ export default function App() {
           className="absolute border-3 border-[#ef4444] bg-red-50/50 rounded-2xl flex flex-col items-center justify-center pointer-events-none"
           style={{
             left: `${(149 - 8) * 4}px`,
-            top: `${(195 - 10) * 4}px`,
+            top: `${(245 - 10) * 4}px`,
             width: `${16 * 4}px`,
             height: `${14 * 4}px`
           }}
@@ -2723,21 +3225,50 @@ export default function App() {
         })}
 
         {/* Mines rendering */}
-        {minesRevealed && mines.map((coord, idx) => {
+        {mines.map((coord, idx) => {
           const [mx, my] = coord.split(',').map(Number);
+          const isRevealedForSide = mx < widthSize / 2 
+            ? (blueMinesRevealed || minesRevealed) 
+            : (redMinesRevealed || minesRevealed);
+          
+          if (!isRevealedForSide) return null;
           return (
              <div 
                key={`mine-revealed-${idx}`}
-               className="absolute bg-orange-500 rounded-full animate-pulse z-10"
+               className="absolute bg-amber-400 rounded-full z-10"
                style={{ 
                  left: `${mx * 4 + 1}px`, 
                  top: `${my * 4 + 1}px`,
                  width: '2px',
-                 height: '2px'
+                 height: '2px',
+                 boxShadow: '0 0 8px 3px #ff4500, 0 0 12px 6px #ff7700',
+                 border: '1px solid #ffffff'
                }}
              />
           );
         })}
+
+        {/* Landmarks rendering */}
+        {landmarks && landmarks.map((lm, idx) => (
+          <div 
+            key={`lm-render-${lm.id || idx}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedLandmark(lm);
+            }}
+            className="absolute border-2 border-black rounded flex items-center justify-center cursor-pointer select-none z-[12] hover:scale-110 hover:-translate-y-0.5 active:scale-95 text-[10px] shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] transition-all"
+            style={{
+              left: `${lm.x * 4}px`,
+              top: `${lm.y * 4}px`,
+              width: `${4 * 4}px`,
+              height: `${4 * 4}px`,
+              backgroundColor: lm.color || '#10b981',
+            }}
+            title={`${lm.name} - by ${lm.creatorName} (Click to inspect)`}
+          >
+            🏰
+          </div>
+        ))}
 
         {/* Left blue shade */}
         <div className="absolute top-0 left-0 w-1/2 h-full bg-blue-500/10 pointer-events-none" />
@@ -2748,7 +3279,7 @@ export default function App() {
         {/* Middle vertical red divider */}
         <div 
           className="absolute top-0 left-1/2 w-[2px] h-full bg-red-600 -translate-x-1/2 pointer-events-none z-10" 
-          style={{ left: `${(size * 4) / 2}px` }}
+          style={{ left: `${(widthSize * 4) / 2}px` }}
         />
 
         {/* Blue figure */}
