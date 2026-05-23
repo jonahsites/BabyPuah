@@ -8,7 +8,7 @@ import { Plus, Minus, RotateCcw } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { db, auth } from "./lib/firebase";
 import { doc, onSnapshot, updateDoc, setDoc, getDoc, serverTimestamp, increment, collection, query, orderBy, limit, getDocs } from "firebase/firestore";
-import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, User as FirebaseUser } from "firebase/auth";
+import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, User as FirebaseUser, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import SlingshotGame from "./components/SlingshotGame";
 
 const GAME_ID = "global";
@@ -105,6 +105,10 @@ export default function App() {
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [signUpDisplayName, setSignUpDisplayName] = useState("");
   const [isDevMode, setIsDevMode] = useState(false);
   const [stripeConfig, setStripeConfig] = useState<{ stripeEnabled: boolean, hasSecretKey: boolean } | null>(null);
   const [paymentSuccessMessage, setPaymentSuccessMessage] = useState<string | null>(null);
@@ -164,6 +168,44 @@ export default function App() {
     }
   };
 
+  const handleEmailLoginOrSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError(null);
+    if (!email.trim() || !password) {
+      setLoginError("Please enter both email and password.");
+      return;
+    }
+    if (password.length < 6) {
+      setLoginError("Password must be at least 6 characters.");
+      return;
+    }
+    try {
+      if (isSignUp) {
+        if (!signUpDisplayName.trim()) {
+          setLoginError("Please enter a callsign (display name) for your registry.");
+          return;
+        }
+        const userCred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+        await updateProfile(userCred.user, {
+          displayName: signUpDisplayName.trim()
+        });
+      } else {
+        await signInWithEmailAndPassword(auth, email.trim(), password);
+      }
+    } catch (err: any) {
+      console.error("Email auth failed", err);
+      if (err.code === "auth/email-already-in-use") {
+        setLoginError("This email is already registered. Please sign in instead!");
+      } else if (err.code === "auth/invalid-credential" || err.code === "auth/wrong-password" || err.code === "auth/user-not-found" || err.code === "auth/invalid-email") {
+        setLoginError("Invalid credentials. Please verify your email and password.");
+      } else if (err.code === "auth/weak-password") {
+        setLoginError("Weak password: must be at least 6 characters.");
+      } else {
+        setLoginError(err.message || String(err));
+      }
+    }
+  };
+
   const handleLogout = () => {
     setLoginError(null);
     signOut(auth);
@@ -216,9 +258,10 @@ export default function App() {
             setProfile(snap.data() as any);
           } else {
             // Create profile
+            const tempName = u.displayName || signUpDisplayName || "Unknown Wanderer";
             const newProfile = {
-              displayName: u.displayName || "Unknown Wanderer",
-              photoURL: u.photoURL || "",
+              displayName: tempName,
+              photoURL: u.photoURL || "https://api.dicebear.com/7.x/bottts/svg?seed=" + encodeURIComponent(tempName),
               totalDonated: 0,
               currentTokens: 100, // Initial free tokens?
               updatedAt: serverTimestamp()
@@ -287,6 +330,19 @@ export default function App() {
 
   const [bluePos, setBluePos] = useState(initialBlue);
   const [redPos, setRedPos] = useState(initialRed);
+
+  // Custom Sponsorship states
+  const [sponsoredBabies, setSponsoredBabies] = useState<any[]>([]);
+  const [selectedBabyId, setSelectedBabyId] = useState<string>('none');
+  const [isSponsorModalOpen, setIsSponsorModalOpen] = useState(false);
+  const [sponsorName, setSponsorName] = useState('');
+  const [sponsorColor, setSponsorColor] = useState('#22c55e'); // Green default
+  const [sponsorSide, setSponsorSide] = useState<'left' | 'right'>('left');
+
+  // Great Reset states
+  const [greatResetEvent, setGreatResetEvent] = useState<any>(null);
+  const [showEpicResetAnimation, setShowEpicResetAnimation] = useState(false);
+  const [isGreatResetModalOpen, setIsGreatResetModalOpen] = useState(false);
   
   const [blueRot, setBlueRot] = useState(-90);
   const [redRot, setRedRot] = useState(-90);
@@ -329,6 +385,10 @@ export default function App() {
   const [sprintRed, setSprintRed] = useState(0); // timestamp until end
 
   const [isWallBuilding, setIsWallBuilding] = useState<{ side: 'blue' | 'red', budget: number } | null>(null);
+  const isWallBuildingRef = useRef<any>(null);
+  useEffect(() => {
+    isWallBuildingRef.current = isWallBuilding;
+  }, [isWallBuilding]);
   const [jackpotResult, setJackpotResult] = useState<number | null>(null);
   const [jackpotSpinning, setJackpotSpinning] = useState<{ side: 'blue' | 'red', rotation: number, isFinished: boolean, resultValue: number } | null>(null);
   const [isLogOpen, setIsLogOpen] = useState(true);
@@ -408,14 +468,26 @@ export default function App() {
     setIsOnboardingOpen(false);
   };
 
-  const canControl = (side: 'blue' | 'red') => {
+  const canControl = (sideId: string) => {
     if (!user) return false;
     if (userRole === 'admin') return true;
-    return userRole === side;
+    
+    // Check if it's a sponsored baby
+    const customBaby = sponsoredBabies.find(b => b.id === sideId);
+    if (customBaby) {
+      // Anyone who owns it can control, or anyone on its lane side can control!
+      if (customBaby.ownerUid === user.uid) return true;
+      const associatedSide = customBaby.side === 'left' ? 'blue' : 'red';
+      return userRole === associatedSide;
+    }
+    
+    return userRole === sideId;
   };
 
-  const calculateActualSteps = (side: 'blue' | 'red', steps: number) => {
-    const isSprinting = (side === 'blue' ? sprintBlue : sprintRed) > Date.now();
+  const calculateActualSteps = (sideId: string, steps: number) => {
+    const customBaby = sponsoredBabies.find(b => b.id === sideId);
+    const primarySide = customBaby ? (customBaby.side === 'left' ? 'blue' : 'red') : sideId;
+    const isSprinting = (primarySide === 'blue' ? sprintBlue : sprintRed) > Date.now();
     return isSprinting ? steps * 2 : steps;
   };
 
@@ -447,6 +519,8 @@ export default function App() {
             sprintRed: 0,
             totalRaised: 0,
             landmarks: [],
+            sponsoredBabies: [],
+            greatResetEvent: null,
             updatedAt: serverTimestamp()
           });
         }
@@ -481,6 +555,8 @@ export default function App() {
           setSprintBlue(data.sprintBlue || 0);
           setSprintRed(data.sprintRed || 0);
           setLandmarks(data.landmarks || []);
+          setSponsoredBabies(data.sponsoredBabies || []);
+          setGreatResetEvent(data.greatResetEvent || null);
         }
       }
     }, (error) => {
@@ -489,6 +565,33 @@ export default function App() {
 
     return () => unsubscribe();
   }, []);
+
+  const lastSeenResetIdRef = useRef<string | null>(null);
+
+  // Sync selectedBabyId when user role updates initially
+  useEffect(() => {
+    if (userRole === 'blue') {
+      setSelectedBabyId('blue');
+    } else if (userRole === 'red') {
+      setSelectedBabyId('red');
+    } else if (userRole === 'admin') {
+      setSelectedBabyId('blue');
+    } else {
+      setSelectedBabyId('none');
+    }
+  }, [userRole]);
+
+  // Listen to the Great Reset spectacular event
+  useEffect(() => {
+    if (greatResetEvent && greatResetEvent.id && greatResetEvent.id !== lastSeenResetIdRef.current) {
+      lastSeenResetIdRef.current = greatResetEvent.id;
+      setShowEpicResetAnimation(true);
+      const timer = setTimeout(() => {
+        setShowEpicResetAnimation(false);
+      }, 7000);
+      return () => clearTimeout(timer);
+    }
+  }, [greatResetEvent]);
 
   const addLog = async (msg: string) => {
     const newLog = { msg, time: new Date().toLocaleTimeString() };
@@ -555,32 +658,26 @@ export default function App() {
       const zoomSpeed = 0.0015;
       const delta = -e.deltaY * zoomSpeed;
       const prevScale = transformRef.current.scale;
-      const newScale = Math.min(Math.max(0.2, prevScale + delta), 5);
+      const newScale = Math.min(Math.max(0.15, prevScale + delta), 5);
 
-      const isMobileNow = window.innerWidth < 768;
-      if (isMobileNow) {
-        const rvw = viewport.clientWidth || window.innerWidth;
-        const rvh = viewport.clientHeight || window.innerHeight;
-        const rgw = widthSize * 4;
-        const rgh = heightSize * 4;
-        transformRef.current.x = (rvw - rgw * newScale) / 2;
-        transformRef.current.y = (rvh - rgh * newScale) / 2;
-      } else {
-        const rect = viewport.getBoundingClientRect();
-        const mx = e.clientX - rect.left;
-        const my = e.clientY - rect.top;
+      const rect = viewport.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
 
-        transformRef.current.x -= (mx - transformRef.current.x) * (newScale / prevScale - 1);
-        transformRef.current.y -= (my - transformRef.current.y) * (newScale / prevScale - 1);
-      }
+      transformRef.current.x -= (mx - transformRef.current.x) * (newScale / prevScale - 1);
+      transformRef.current.y -= (my - transformRef.current.y) * (newScale / prevScale - 1);
+      
       transformRef.current.scale = newScale;
       update();
     };
 
-    const handlePointerDown = (e: PointerEvent) => {
-      if ((e.target as HTMLElement).closest('button, input, select, textarea, a') || isWallBuilding) return;
-      const isMobileNow = window.innerWidth < 768;
-      if (isMobileNow) return; // Block moving on mobile entirely!
+    const handleDragStart = (e: DragEvent) => {
+      e.preventDefault();
+    };
+
+    const handleMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return; // Only left mouse button trigger drag
+      if ((e.target as HTMLElement).closest('button, input, select, textarea, a') || isWallBuildingRef.current) return;
       setLiveTracking(false); // Cancel live tracking on manual pan drag
       isDragging.current = true;
       startPos.current = {
@@ -590,45 +687,78 @@ export default function App() {
       viewport.style.cursor = 'grabbing';
     };
 
-    const handlePointerMove = (e: PointerEvent) => {
+    const handleMouseMove = (e: MouseEvent) => {
       if (!isDragging.current) return;
-      const isMobileNow = window.innerWidth < 768;
-      if (isMobileNow) return; // Block moving on mobile entirely!
       transformRef.current.x = e.clientX - startPos.current.x;
       transformRef.current.y = e.clientY - startPos.current.y;
       update();
     };
 
-    const handlePointerUp = () => {
+    const handleMouseUp = () => {
       isDragging.current = false;
       viewport.style.cursor = 'grab';
     };
 
-    const handleResize = () => {
-      const isMobileNow = window.innerWidth < 768;
-      if (isMobileNow) {
-        const rvw = viewport.clientWidth || window.innerWidth;
-        const rvh = viewport.clientHeight || window.innerHeight;
-        const rgw = widthSize * 4;
-        const rgh = heightSize * 4;
-        transformRef.current.scale = 0.45;
-        transformRef.current.x = (rvw - rgw * transformRef.current.scale) / 2;
-        transformRef.current.y = (rvh - rgh * transformRef.current.scale) / 2;
+    // Touch event listeners for seamless mobile/trackpad drag experience
+    let isTouchDragging = false;
+    let touchStartPos = { x: 0, y: 0 };
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        if ((e.target as HTMLElement).closest('button, input, select, textarea, a') || isWallBuildingRef.current) return;
+        setLiveTracking(false);
+        isTouchDragging = true;
+        touchStartPos = {
+          x: e.touches[0].clientX - transformRef.current.x,
+          y: e.touches[0].clientY - transformRef.current.y
+        };
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isTouchDragging) return;
+      if (e.touches.length === 1) {
+        transformRef.current.x = e.touches[0].clientX - touchStartPos.x;
+        transformRef.current.y = e.touches[0].clientY - touchStartPos.y;
         update();
       }
     };
 
+    const handleTouchEnd = () => {
+      isTouchDragging = false;
+    };
+
+    const handleResize = () => {
+      // Respect user's current pan/zoom instead of forcing reset! Only update layout bounds if essential
+      update();
+    };
+
     viewport.addEventListener("wheel", handleWheel, { passive: false });
-    viewport.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp);
+    viewport.addEventListener("mousedown", handleMouseDown);
+    viewport.addEventListener("mousemove", handleMouseMove);
+    viewport.addEventListener("mouseup", handleMouseUp);
+    viewport.addEventListener("mouseleave", handleMouseUp);
+    viewport.addEventListener("dragstart", handleDragStart);
+    
+    // Add touch listeners
+    viewport.addEventListener("touchstart", handleTouchStart, { passive: true });
+    viewport.addEventListener("touchmove", handleTouchMove, { passive: true });
+    viewport.addEventListener("touchend", handleTouchEnd, { passive: true });
+    
     window.addEventListener("resize", handleResize);
 
     return () => {
       viewport.removeEventListener("wheel", handleWheel);
-      viewport.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
+      viewport.removeEventListener("mousedown", handleMouseDown);
+      viewport.removeEventListener("mousemove", handleMouseMove);
+      viewport.removeEventListener("mouseup", handleMouseUp);
+      viewport.removeEventListener("mouseleave", handleMouseUp);
+      viewport.removeEventListener("dragstart", handleDragStart);
+      
+      viewport.removeEventListener("touchstart", handleTouchStart);
+      viewport.removeEventListener("touchmove", handleTouchMove);
+      viewport.removeEventListener("touchend", handleTouchEnd);
+      
       window.removeEventListener("resize", handleResize);
     };
   }, []);
@@ -640,79 +770,132 @@ export default function App() {
         return;
       }
       const key = e.key.toLowerCase();
-      
-      // Blue controls (WASD)
-      if (['w', 'a', 's', 'd'].includes(key) && canControl('blue')) {
-        let nextPos = { ...bluePos };
-        let nextRot = blueRot;
-        if (key === 'w' && bluePos.y > 0) { nextPos.y -= 1; nextRot = -90; }
-        if (key === 's' && bluePos.y < heightSize - 1) { nextPos.y += 1; nextRot = 90; }
-        if (key === 'a' && bluePos.x > 0) { nextPos.x -= 1; nextRot = 180; }
-        if (key === 'd' && bluePos.x < (widthSize / 2) - 1) { nextPos.x += 1; nextRot = 0; }
-        
-        if (nextPos.x !== bluePos.x || nextPos.y !== bluePos.y) {
-          if (walls.includes(`${nextPos.x},${nextPos.y}`) || isObstacleVal(nextPos.x, nextPos.y)) return;
-          if (mines.includes(`${nextPos.x},${nextPos.y}`)) {
-            setMineAlert(`You hit a mine! Resetting to start.`);
-            addLog("Blue hit a mine! Resetting to start.");
-            setBluePos(initialBlue);
-            updateFirebase({ bluePos: initialBlue });
-            return;
-          }
+      const isWasd = ['w', 'a', 's', 'd'].includes(key);
+      const isArrows = ['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key);
 
-          const success = await spendTokens('blue', 1);
-          if (!success) return;
+      if ((isWasd || isArrows) && userRole !== 'none') {
+        if (selectedBabyId === 'none') return;
 
-          const newTrail = [...blueTrail, `${bluePos.x},${bluePos.y}`];
-          setBluePos(nextPos);
-          setBlueRot(nextRot);
-          setBlueTrail(newTrail);
-          updateFirebase({
-            bluePos: nextPos,
-            blueRot: nextRot,
-            blueTrail: newTrail
-          });
+        let curX = 0;
+        let curY = 0;
+        let curRot = -90;
+        let curTrail: string[] = [];
+        let isLeft = true;
+        let babyName = "Baby";
+
+        let customBaby = sponsoredBabies.find(b => b.id === selectedBabyId);
+
+        if (selectedBabyId === 'blue') {
+          curX = bluePos.x;
+          curY = bluePos.y;
+          curRot = blueRot;
+          curTrail = blueTrail;
+          isLeft = true;
+          babyName = "Blue Baby";
+        } else if (selectedBabyId === 'red') {
+          curX = redPos.x;
+          curY = redPos.y;
+          curRot = redRot;
+          curTrail = redTrail;
+          isLeft = false;
+          babyName = "Red Baby";
+        } else if (customBaby) {
+          curX = customBaby.x;
+          curY = customBaby.y;
+          curRot = customBaby.rot || -90;
+          curTrail = customBaby.trail || [];
+          isLeft = customBaby.side === 'left';
+          babyName = customBaby.name;
+        } else {
+          return;
         }
-      }
 
-      // Red controls (Arrows)
-      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key) && canControl('red')) {
-        let nextPos = { ...redPos };
-        let nextRot = redRot;
-        if (key === 'arrowup' && redPos.y > 0) { nextPos.y -= 1; nextRot = -90; }
-        if (key === 'arrowdown' && redPos.y < heightSize - 1) { nextPos.y += 1; nextRot = 90; }
-        if (key === 'arrowleft' && redPos.x > widthSize / 2) { nextPos.x -= 1; nextRot = 180; }
-        if (key === 'arrowright' && redPos.x < widthSize - 1) { nextPos.x += 1; nextRot = 0; }
-        
-        if (nextPos.x !== redPos.x || nextPos.y !== redPos.y) {
-          if (walls.includes(`${nextPos.x},${nextPos.y}`) || isObstacleVal(nextPos.x, nextPos.y)) return;
-          if (mines.includes(`${nextPos.x},${nextPos.y}`)) {
-            setMineAlert(`You hit a mine! Resetting to start.`);
-            addLog("Red hit a mine! Resetting to start.");
-            setRedPos(initialRed);
-            updateFirebase({ redPos: initialRed });
+        let nextX = curX;
+        let nextY = curY;
+        let nextRot = curRot;
+
+        if (key === 'w' || key === 'arrowup') {
+          if (curY > 0) { nextY -= 1; nextRot = -90; }
+        } else if (key === 's' || key === 'arrowdown') {
+          if (curY < heightSize - 1) { nextY += 1; nextRot = 95; }
+        } else if (key === 'a' || key === 'arrowleft') {
+          const leftBound = isLeft ? 0 : Math.floor(widthSize / 2);
+          if (curX > leftBound) { nextX -= 1; nextRot = 180; }
+        } else if (key === 'd' || key === 'arrowright') {
+          const rightBound = isLeft ? Math.floor(widthSize / 2) - 1 : widthSize - 1;
+          if (curX < rightBound) { nextX += 1; nextRot = 0; }
+        }
+
+        if (nextX !== curX || nextY !== curY) {
+          if (walls.includes(`${nextX},${nextY}`) || isObstacleVal(nextX, nextY)) return;
+          
+          if (mines.includes(`${nextX},${nextY}`)) {
+            setMineAlert(`🚨 BOOM! "${babyName}" hit a hidden mine! Sanitizing coordinates back to startup.`);
+            addLog(`💥 "${babyName}" hit a mine! Resetting coordinate count back to starting point.`);
+            
+            if (selectedBabyId === 'blue') {
+              setBluePos(initialBlue);
+              updateFirebase({ bluePos: initialBlue });
+            } else if (selectedBabyId === 'red') {
+              setRedPos(initialRed);
+              updateFirebase({ redPos: initialRed });
+            } else if (customBaby) {
+              const initX = customBaby.initialX || 49;
+              const initY = customBaby.initialY || 245;
+              const updated = sponsoredBabies.map(b => {
+                if (b.id === selectedBabyId) {
+                  return { ...b, x: initX, y: initY, rot: -90, trail: [] };
+                }
+                return b;
+              });
+              setSponsoredBabies(updated);
+              updateFirebase({ sponsoredBabies: updated });
+            }
             return;
           }
 
-          const success = await spendTokens('red', 1);
+          // Spend tokens (Admins free, else 1 token)
+          const sideKey = isLeft ? 'blue' : 'red';
+          const success = await spendTokens(sideKey, 1);
           if (!success) return;
-          
-          const newTrail = [...redTrail, `${redPos.x},${redPos.y}`];
-          setRedPos(nextPos);
-          setRedRot(nextRot);
-          setRedTrail(newTrail);
-          updateFirebase({
-            redPos: nextPos,
-            redRot: nextRot,
-            redTrail: newTrail
-          });
+
+          const newTrail = [...curTrail, `${curX},${curY}`];
+
+          if (selectedBabyId === 'blue') {
+            setBluePos({ x: nextX, y: nextY });
+            setBlueRot(nextRot);
+            setBlueTrail(newTrail);
+            updateFirebase({
+              bluePos: { x: nextX, y: nextY },
+              blueRot: nextRot,
+              blueTrail: newTrail
+            });
+          } else if (selectedBabyId === 'red') {
+            setRedPos({ x: nextX, y: nextY });
+            setRedRot(nextRot);
+            setRedTrail(newTrail);
+            updateFirebase({
+              redPos: { x: nextX, y: nextY },
+              redRot: nextRot,
+              redTrail: newTrail
+            });
+          } else if (customBaby) {
+            const updated = sponsoredBabies.map(b => {
+              if (b.id === selectedBabyId) {
+                return { ...b, x: nextX, y: nextY, rot: nextRot, trail: newTrail };
+              }
+              return b;
+            });
+            setSponsoredBabies(updated);
+            updateFirebase({ sponsoredBabies: updated });
+          }
         }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [widthSize, heightSize, bluePos, blueRot, blueTrail, redPos, redRot, redTrail, walls, mines, userRole, user, profile]);
+  }, [widthSize, heightSize, bluePos, blueRot, blueTrail, redPos, redRot, redTrail, walls, mines, userRole, user, profile, selectedBabyId, sponsoredBabies]);
 
   // Center & Lock on player team's baby in real time
   const centerOnBaby = () => {
@@ -720,8 +903,16 @@ export default function App() {
     const grid = gridRef.current;
     if (!viewport || !grid) return;
 
-    const trackedSide = userRole === 'blue' ? 'blue' : (userRole === 'red' ? 'red' : mobileActiveSide);
-    const pos = trackedSide === 'blue' ? bluePos : redPos;
+    let pos = bluePos;
+    if (selectedBabyId === 'red') {
+      pos = redPos;
+    } else if (selectedBabyId !== 'blue' && selectedBabyId !== 'none') {
+      const match = sponsoredBabies.find(b => b.id === selectedBabyId);
+      if (match) {
+        pos = { x: match.x, y: match.y };
+      }
+    }
+
     if (!pos) return;
 
     const vw = viewport.clientWidth || window.innerWidth;
@@ -738,7 +929,7 @@ export default function App() {
     if (liveTracking) {
       centerOnBaby();
     }
-  }, [liveTracking, bluePos, redPos, userRole, mobileActiveSide]);
+  }, [liveTracking, bluePos, redPos, sponsoredBabies, selectedBabyId]);
 
   const spendTokens = async (side: 'blue' | 'red', cost: number) => {
     if (!user) {
@@ -792,35 +983,230 @@ export default function App() {
     return true;
   };
 
-  const executeBatchMove = async (side: 'blue' | 'red', targetSideSide: 'blue' | 'red', type: 'move' | 'grid', steps: number, direction: string) => {
-    const isBlueTarget = targetSideSide === 'blue';
+  const spendTokensSimple = async (cost: number) => {
+    if (userRole === 'admin') return true; // Admins represent complete freedom
+    if (!user) {
+      addLog("You must be logged in to spend tokens!");
+      return false;
+    }
+    if (!profile) {
+      addLog("Your profile is still loading. Please try again!");
+      return false;
+    }
+    if (profile.currentTokens < cost) {
+      addLog(`Not enough tokens! Sponsoring or resetting requires ${cost} tokens.`);
+      setIsPurchaseModalOpen(true);
+      return false;
+    }
+
+    const userRef = doc(db, "users", user.uid);
+    try {
+      await updateDoc(userRef, {
+        currentTokens: increment(-cost),
+        totalDonated: increment(cost)
+      });
+      
+      const gameRef = doc(db, "games", GAME_ID);
+      await setDoc(gameRef, {
+        totalRaised: increment(cost),
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      
+      return true;
+    } catch (e: any) {
+      console.warn("Client fallback trigger activated", e);
+      setProfile(prev => prev ? {
+        ...prev,
+        currentTokens: Math.max(0, prev.currentTokens - cost),
+        totalDonated: prev.totalDonated + cost
+      } : null);
+      setTotalRaised(prev => prev + cost);
+      return true;
+    }
+  };
+
+  const triggerGreatReset = async (target: 'blue' | 'red' | 'both' | string) => {
+    if (userRole !== 'admin') {
+      const success = await spendTokensSimple(1000);
+      if (!success) return;
+    }
+
+    const newResetId = "reset-" + Date.now();
+    let targetDesc = '';
+    let updates: any = {};
+
+    if (target === 'blue' || target === 'both') {
+      updates.bluePos = initialBlue;
+      updates.blueTrail = [];
+      updates.blueRot = -90;
+      setBluePos(initialBlue);
+      setBlueRot(-90);
+      setBlueTrail([]);
+      targetDesc += 'Blue Team';
+    }
+
+    if (target === 'red' || target === 'both') {
+      updates.redPos = initialRed;
+      updates.redTrail = [];
+      updates.redRot = -90;
+      setRedPos(initialRed);
+      setRedRot(-90);
+      setRedTrail([]);
+      if (targetDesc) targetDesc += ' & ';
+      targetDesc += 'Red Team';
+    }
+
+    if (target === 'both') {
+      targetDesc = 'Entire Battlefield (Both Teams)';
+    }
+
+    // Reset Custom Sponsored Baby Progress
+    if (target.startsWith('baby-')) {
+      const babyId = target;
+      const babyObj = sponsoredBabies.find(b => b.id === babyId);
+      if (babyObj) {
+        targetDesc = `Custom Baby "${babyObj.name}"`;
+        const updated = sponsoredBabies.map(b => {
+          if (b.id === babyId) {
+            return {
+              ...b,
+              x: b.initialX || 49,
+              y: b.initialY || 245,
+              trail: [],
+              rot: -90
+            };
+          }
+          return b;
+        });
+        setSponsoredBabies(updated);
+        updates.sponsoredBabies = updated;
+      }
+    }
+
+    if (!targetDesc) {
+      targetDesc = target;
+    }
+
+    // Embed finalized detail into global broadcast alert
+    updates.greatResetEvent = {
+      id: newResetId,
+      triggeredBy: profile?.displayName || user?.displayName || "Anonymous Commander",
+      target: target,
+      targetName: targetDesc,
+      timestamp: Date.now()
+    };
+
+    await addLog(`🚨 ${profile?.displayName || user?.displayName || "Commander"} triggered THE GREAT RESET on ${targetDesc}!`);
+    await updateFirebase(updates);
+    setIsGreatResetModalOpen(false);
+  };
+
+  const sponsorYourOwnBaby = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sponsorName.trim()) {
+      addLog("Please enter a callsign for your sponsored baby.");
+      return;
+    }
+
+    if (userRole !== 'admin') {
+      const success = await spendTokensSimple(500);
+      if (!success) return;
+    }
+
+    const babyId = "baby-" + Date.now();
+    const isLeft = sponsorSide === 'left';
     
-    // Get current values
-    const currentPos = isBlueTarget ? bluePos : redPos;
-    const currentTrail = isBlueTarget ? blueTrail : redTrail;
+    // Count existing sponsored babies on this side to stagger starting X coordinate so they stay purely on the side lanes with no overlap
+    const sideBabiesCount = sponsoredBabies.filter(b => b.side === sponsorSide).length;
+    // Each side has 100 wide grid lanes.
+    // Left side is 0-99. Blue is at 49. Let's make staggered babies spawn at 10, 22, 34, etc. (up to 85) so they don't overlap with Blue or each other.
+    // Right side is 100-199. Red is at 149. Let's make staggered babies spawn at 110, 122, 134, etc. (up to 185) so they don't overlap with Red or each other.
+    const launchX = isLeft 
+      ? Math.min(85, 10 + (sideBabiesCount * 12)) 
+      : Math.min(185, 110 + (sideBabiesCount * 12));
+    const launchY = 245;
+
+    const newBaby = {
+      id: babyId,
+      name: sponsorName.trim(),
+      color: sponsorColor,
+      ownerUid: user?.uid || "unknown",
+      ownerName: profile?.displayName || user?.displayName || "Anonymous Spacer",
+      x: launchX,
+      y: launchY,
+      initialX: launchX,
+      initialY: launchY,
+      rot: -90,
+      trail: [],
+      side: sponsorSide
+    };
+
+    const updated = [...sponsoredBabies, newBaby];
+    setSponsoredBabies(updated);
+    await updateFirebase({ sponsoredBabies: updated });
+    await addLog(`🍼 NEW SPONSOR BABY DEPLOYED: "${newBaby.name}" with glowing color ${newBaby.color}!`);
+    
+    // Auto-select the newly sponsored baby!
+    setSelectedBabyId(babyId);
+
+    // Reset fields & close
+    setSponsorName('');
+    setIsSponsorModalOpen(false);
+  };
+
+  const executeBatchMove = async (sideId: string, targetSideId: string, type: 'move' | 'grid', steps: number, direction: string) => {
+    const customTargetBaby = sponsoredBabies.find(b => b.id === targetSideId);
+    const customSourceBaby = sponsoredBabies.find(b => b.id === sideId);
+
+    const targetSide = customTargetBaby ? (customTargetBaby.side === 'left' ? 'blue' : 'red') : (targetSideId === 'red' ? 'red' : 'blue');
+    const spendingSide = customSourceBaby ? (customSourceBaby.side === 'left' ? 'blue' : 'red') : (sideId === 'red' ? 'red' : 'blue');
+    const isLeftTarget = targetSide === 'blue';
+
+    let currentPos = { x: 0, y: 0 };
+    let currentTrail: string[] = [];
+    let currentRot = -90;
+    let babyName = "Baby Stroller";
+
+    if (targetSideId === 'blue') {
+      currentPos = bluePos;
+      currentTrail = blueTrail;
+      currentRot = blueRot;
+      babyName = "Blue Team Stroller";
+    } else if (targetSideId === 'red') {
+      currentPos = redPos;
+      currentTrail = redTrail;
+      currentRot = redRot;
+      babyName = "Red Team Stroller";
+    } else if (customTargetBaby) {
+      currentPos = { x: customTargetBaby.x, y: customTargetBaby.y };
+      currentTrail = customTargetBaby.trail || [];
+      currentRot = customTargetBaby.rot || -90;
+      babyName = `👶 ${customTargetBaby.name}`;
+    } else {
+      return;
+    }
 
     const cost = type === 'move' ? steps : steps * 2;
-    
-    const success = await spendTokens(side, cost);
+    const success = await spendTokens(spendingSide, cost);
     if (!success) return;
 
     let nextPos = { ...currentPos };
     let newTrailSegment: string[] = [];
-    let nextRot = isBlueTarget ? blueRot : redRot;
+    let nextRot = currentRot;
 
-    const actualSteps = calculateActualSteps(side, steps);
+    const actualSteps = calculateActualSteps(spendingSide, steps);
 
     for (let i = 0; i < actualSteps; i++) {
         const temp = { ...nextPos };
         if (direction === 'up' && nextPos.y > 0) { nextPos.y -= 1; nextRot = -90; }
         if (direction === 'down' && nextPos.y < heightSize - 1) { nextPos.y += 1; nextRot = 90; }
         if (direction === 'left') {
-           if (isBlueTarget && nextPos.x > 0) { nextPos.x -= 1; nextRot = 180; }
-           else if (!isBlueTarget && nextPos.x > widthSize / 2) { nextPos.x -= 1; nextRot = 180; }
+           if (isLeftTarget && nextPos.x > 0) { nextPos.x -= 1; nextRot = 180; }
+           else if (!isLeftTarget && nextPos.x > widthSize / 2) { nextPos.x -= 1; nextRot = 180; }
         }
         if (direction === 'right') {
-           if (isBlueTarget && nextPos.x < (widthSize / 2) - 1) { nextPos.x += 1; nextRot = 0; }
-           else if (!isBlueTarget && nextPos.x < widthSize - 1) { nextPos.x += 1; nextRot = 0; }
+           if (isLeftTarget && nextPos.x < (widthSize / 2) - 1) { nextPos.x += 1; nextRot = 0; }
+           else if (!isLeftTarget && nextPos.x < widthSize - 1) { nextPos.x += 1; nextRot = 0; }
         }
         
         if (nextPos.x !== temp.x || nextPos.y !== temp.y) {
@@ -829,9 +1215,15 @@ export default function App() {
             break;
           }
           if (mines.includes(`${nextPos.x},${nextPos.y}`)) {
-            setMineAlert(`You hit a mine! Resetting to start.`);
-            addLog(`${targetSideSide === 'blue' ? 'Blue' : 'Red'} hit a mine during batch move!`);
-            nextPos = isBlueTarget ? initialBlue : initialRed;
+            setMineAlert(`🚨 BOOM! "${babyName}" hit a hidden mine! Sanitizing coordinates.`);
+            addLog(`💥 "${babyName}" clicked onto a mine field!`);
+            if (targetSideId === 'blue') {
+              nextPos = initialBlue;
+            } else if (targetSideId === 'red') {
+              nextPos = initialRed;
+            } else if (customTargetBaby) {
+              nextPos = { x: customTargetBaby.initialX || 49, y: customTargetBaby.initialY || 245 };
+            }
             break;
           }
           newTrailSegment.push(`${temp.x},${temp.y}`);
@@ -841,39 +1233,66 @@ export default function App() {
     }
 
     const finalTrail = [...currentTrail, ...newTrailSegment];
-    addLog(`${side} used ${cost} tokens to ${type === 'move' ? 'move' : 'push'} ${actualSteps} steps`);
+    const sourceName = customSourceBaby ? `👶 ${customSourceBaby.name}` : (sideId === 'blue' ? 'Blue' : 'Red');
+    addLog(`💥 "${sourceName}" used ${cost} tokens to ${type === 'move' ? 'move' : 'push'} "${babyName}" ${actualSteps} steps`);
 
-    // Firebase update for the figures (global tokens are no longer used for game figures)
     const updates: any = {};
-    if (isBlueTarget) {
+    if (targetSideId === 'blue') {
       updates.bluePos = nextPos;
       updates.blueRot = nextRot;
       updates.blueTrail = finalTrail;
-      // Optimistic local state update to render instantly
       setBluePos(nextPos);
       setBlueRot(nextRot);
       setBlueTrail(finalTrail);
-    } else {
+    } else if (targetSideId === 'red') {
       updates.redPos = nextPos;
       updates.redRot = nextRot;
       updates.redTrail = finalTrail;
-      // Optimistic local state update to render instantly
       setRedPos(nextPos);
       setRedRot(nextRot);
       setRedTrail(finalTrail);
+    } else if (customTargetBaby) {
+      const updated = sponsoredBabies.map(b => {
+        if (b.id === targetSideId) {
+          return { ...b, x: nextPos.x, y: nextPos.y, rot: nextRot, trail: finalTrail };
+        }
+        return b;
+      });
+      setSponsoredBabies(updated);
+      updates.sponsoredBabies = updated;
     }
-    
+
     await updateFirebase(updates);
   };
 
-  const executeSlingshotLaunch = async (side: 'blue' | 'red', pullX: number, pullY: number, maxPull: number) => {
+  const executeSlingshotLaunch = async (sideId: string, pullX: number, pullY: number, maxPull: number) => {
+    const customBaby = sponsoredBabies.find(b => b.id === sideId);
+    const spendingSide = customBaby ? (customBaby.side === 'left' ? 'blue' : 'red') : (sideId === 'red' ? 'red' : 'blue');
+    const isLeft = spendingSide === 'blue';
+
     const cost = 100;
-    const success = await spendTokens(side, cost);
+    const success = await spendTokens(spendingSide, cost);
     if (!success) return false;
 
-    const isBlueTarget = side === 'blue';
-    const currentPos = isBlueTarget ? bluePos : redPos;
-    const currentTrail = isBlueTarget ? blueTrail : redTrail;
+    let currentPos = { x: 0, y: 0 };
+    let currentTrail: string[] = [];
+    let babyName = "Baby Stroller";
+
+    if (sideId === 'blue') {
+      currentPos = bluePos;
+      currentTrail = blueTrail;
+      babyName = "Blue Team Stroller";
+    } else if (sideId === 'red') {
+      currentPos = redPos;
+      currentTrail = redTrail;
+      babyName = "Red Team Stroller";
+    } else if (customBaby) {
+      currentPos = { x: customBaby.x, y: customBaby.y };
+      currentTrail = customBaby.trail || [];
+      babyName = `👶 ${customBaby.name}`;
+    } else {
+      return false;
+    }
 
     // Launch vector is the opposite of pull direction!
     const lX = -pullX;
@@ -918,7 +1337,7 @@ export default function App() {
 
     for (const pt of linePoints) {
       let inBound = false;
-      if (isBlueTarget) {
+      if (isLeft) {
         if (pt.x >= 0 && pt.x < widthSize / 2 && pt.y >= 0 && pt.y < heightSize) {
           inBound = true;
         }
@@ -935,9 +1354,15 @@ export default function App() {
       }
 
       if (mines.includes(`${pt.x},${pt.y}`)) {
-        setMineAlert(`You hit a mine! Resetting to start.`);
-        addLog(`🎯 ${side === 'blue' ? 'Blue' : 'Red'} slingshot hit a mine! Resetting to start.`);
-        nextPos = isBlueTarget ? initialBlue : initialRed;
+        setMineAlert(`🚨 BOOM! "${babyName}" slingshot hit a hidden mine! Resetting coordinates.`);
+        addLog(`💥 "${babyName}" slingshot launched onto a mine!`);
+        if (sideId === 'blue') {
+          nextPos = initialBlue;
+        } else if (sideId === 'red') {
+          nextPos = initialRed;
+        } else if (customBaby) {
+          nextPos = { x: customBaby.initialX || 49, y: customBaby.initialY || 245 };
+        }
         break;
       }
 
@@ -946,23 +1371,32 @@ export default function App() {
     }
 
     const finalTrail = [...currentTrail, ...newTrailSegment];
-    addLog(`🎯 ${side === 'blue' ? 'Blue' : 'Red'} slingshot launched baby ${steps} blocks!`);
+    addLog(`🏹 "${babyName}" launched ${steps} flight blocks via Slingshot!`);
 
     const updates: any = {};
-    if (isBlueTarget) {
+    if (sideId === 'blue') {
       updates.bluePos = nextPos;
       updates.blueRot = nextRot;
       updates.blueTrail = finalTrail;
       setBluePos(nextPos);
       setBlueRot(nextRot);
       setBlueTrail(finalTrail);
-    } else {
+    } else if (sideId === 'red') {
       updates.redPos = nextPos;
       updates.redRot = nextRot;
       updates.redTrail = finalTrail;
       setRedPos(nextPos);
       setRedRot(nextRot);
       setRedTrail(finalTrail);
+    } else if (customBaby) {
+      const updated = sponsoredBabies.map(b => {
+        if (b.id === sideId) {
+          return { ...b, x: nextPos.x, y: nextPos.y, rot: nextRot, trail: finalTrail };
+        }
+        return b;
+      });
+      setSponsoredBabies(updated);
+      updates.sponsoredBabies = updated;
     }
 
     await updateFirebase(updates);
@@ -1012,9 +1446,12 @@ export default function App() {
     grid.style.transform = `translate(${transformRef.current.x}px, ${transformRef.current.y}px) scale(${transformRef.current.scale})`;
   };
 
-  const handleJackpot = async (side: 'blue' | 'red') => {
+  const handleJackpot = async (sideId: string) => {
+    const customBaby = sponsoredBabies.find(b => b.id === sideId);
+    const spendingSide = customBaby ? (customBaby.side === 'left' ? 'blue' : 'red') : (sideId === 'red' ? 'red' : 'blue');
+
     const cost = 10;
-    const success = await spendTokens(side, cost);
+    const success = await spendTokens(spendingSide, cost);
     if (!success) return;
     
     // Choose index from the JACKPOT_SLICES list
@@ -1031,107 +1468,148 @@ export default function App() {
     
     // Begin wheel spin
     setJackpotSpinning({
-      side,
+      side: sideId as any,
       rotation: finalRotation,
       isFinished: false,
       resultValue: result
     });
     
-    addLog(`${side === 'blue' ? 'Blue' : 'Red'} initiated the Jackpot fortune spin...`);
+    const babyName = customBaby ? `👶 ${customBaby.name}` : (sideId === 'blue' ? 'Blue' : 'Red');
+    addLog(`🎰 "${babyName}" initiated the Jackpot fortune spin...`);
   };
 
-  const handleTeleport = async (side: 'blue' | 'red') => {
+  const handleTeleport = async (sideId: string) => {
     setActiveModal(null); // Instantly dismiss modal popup!
+    const customBaby = sponsoredBabies.find(b => b.id === sideId);
+    const spendingSide = customBaby ? (customBaby.side === 'left' ? 'blue' : 'red') : (sideId === 'red' ? 'red' : 'blue');
+    const isLeft = spendingSide === 'blue';
+
     const cost = 5;
-    const success = await spendTokens(side, cost);
+    const success = await spendTokens(spendingSide, cost);
     if (!success) return;
     
-    const current = side === 'blue' ? bluePos : redPos;
+    let currentPos = { x: 0, y: 0 };
+    let currentTrail: string[] = [];
+    let babyName = "Baby Stroller";
+
+    if (sideId === 'blue') {
+      currentPos = bluePos;
+      currentTrail = blueTrail;
+      babyName = "Blue Team Stroller";
+    } else if (sideId === 'red') {
+      currentPos = redPos;
+      currentTrail = redTrail;
+      babyName = "Red Team Stroller";
+    } else if (customBaby) {
+      currentPos = { x: customBaby.x, y: customBaby.y };
+      currentTrail = customBaby.trail || [];
+      babyName = `👶 ${customBaby.name}`;
+    } else {
+      return;
+    }
+
     const dx = Math.floor(Math.random() * 11) - 5;
     const dy = Math.floor(Math.random() * 11) - 5;
     
-    let nx = current.x + dx;
-    let ny = current.y + dy;
+    let nx = currentPos.x + dx;
+    let ny = currentPos.y + dy;
     
     // Bounds check
     nx = Math.max(0, Math.min(widthSize - 1, nx));
     ny = Math.max(0, Math.min(heightSize - 1, ny));
     // Side lock
-    if (side === 'blue') nx = Math.min((widthSize / 2) - 1, nx);
+    if (isLeft) nx = Math.min((widthSize / 2) - 1, nx);
     else nx = Math.max(widthSize / 2, nx);
 
     const update: any = {};
 
     // Calculate trail for teleport (connecting line)
-    const currentTrail = side === 'blue' ? blueTrail : redTrail;
     const teleportTrail: string[] = [];
-    const steps = Math.max(Math.abs(nx - current.x), Math.abs(ny - current.y));
+    const steps = Math.max(Math.abs(nx - currentPos.x), Math.abs(ny - currentPos.y));
     for (let i = 1; i <= steps; i++) {
-        const tx = Math.floor(current.x + (nx - current.x) * (i / steps));
-        const ty = Math.floor(current.y + (ny - current.y) * (i / steps));
+        const tx = Math.floor(currentPos.x + (nx - currentPos.x) * (i / steps));
+        const ty = Math.floor(currentPos.y + (ny - currentPos.y) * (i / steps));
         teleportTrail.push(`${tx},${ty}`);
     }
     const finalTrail = [...currentTrail, ...teleportTrail];
 
-    if (side === 'blue') {
+    if (sideId === 'blue') {
       update.bluePos = { x: nx, y: ny };
       update.blueTrail = finalTrail;
       // Optimistic local state update to render instantly
       setBluePos({ x: nx, y: ny });
       setBlueTrail(finalTrail);
-    } else {
+    } else if (sideId === 'red') {
       update.redPos = { x: nx, y: ny };
       update.redTrail = finalTrail;
       // Optimistic local state update to render instantly
       setRedPos({ x: nx, y: ny });
       setRedTrail(finalTrail);
+    } else if (customBaby) {
+      const updated = sponsoredBabies.map(b => {
+        if (b.id === sideId) {
+          return { ...b, x: nx, y: ny, trail: finalTrail };
+        }
+        return b;
+      });
+      setSponsoredBabies(updated);
+      update.sponsoredBabies = updated;
     }
     
-    addLog(`${side === 'blue' ? 'Blue' : 'Red'} teleported to ${nx}, ${ny}`);
+    addLog(`🔮 "${babyName}" teleported to ${nx}, ${ny}`);
     await updateFirebase(update);
     setActiveModal(null);
   };
 
-  const handleMinefield = async (side: 'blue' | 'red') => {
+  const handleMinefield = async (sideId: string) => {
     setActiveModal(null); // Instantly dismiss modal popup!
+    const customBaby = sponsoredBabies.find(b => b.id === sideId);
+    const spendingSide = customBaby ? (customBaby.side === 'left' ? 'blue' : 'red') : (sideId === 'red' ? 'red' : 'blue');
+    const isLeft = spendingSide === 'blue';
+
     const cost = 20;
-    const success = await spendTokens(side, cost);
+    const success = await spendTokens(spendingSide, cost);
     if (!success) return;
     
     let newMines = [...mines];
     for (let i = 0; i < 20; i++) {
         // Mine target logic: opponent's side
         let rx, ry;
-        if (side === 'blue') {
-            // Target Red's side (right half)
+        if (isLeft) {
+            // Target opponent's side (right half)
             rx = Math.floor(Math.random() * (widthSize / 2)) + (widthSize / 2);
         } else {
-            // Target Blue's side (left half)
+            // Target opponent's side (left half)
             rx = Math.floor(Math.random() * (widthSize / 2));
         }
         ry = Math.floor(Math.random() * heightSize);
         newMines.push(`${rx},${ry}`);
     }
     setMines(newMines);
-    addLog(`${side === 'blue' ? 'Blue' : 'Red'} deployed a minefield!`);
+    const babyName = customBaby ? `👶 ${customBaby.name}` : (sideId === 'blue' ? 'Blue' : 'Red');
+    addLog(`💣 "${babyName}" deployed a minefield in enemy territory!`);
     await updateFirebase({ 
         mines: newMines
     });
     setActiveModal(null);
   };
 
-  const handleSprint = async (side: 'blue' | 'red') => {
+  const handleSprint = async (sideId: string) => {
+    const customBaby = sponsoredBabies.find(b => b.id === sideId);
+    const spendingSide = customBaby ? (customBaby.side === 'left' ? 'blue' : 'red') : (sideId === 'red' ? 'red' : 'blue');
+
     const cost = 10;
-    const success = await spendTokens(side, cost);
+    const success = await spendTokens(spendingSide, cost);
     if (!success) return;
     
     const end = Date.now() + 30000;
-    if (side === 'blue') setSprintBlue(end);
+    if (spendingSide === 'blue') setSprintBlue(end);
     else setSprintRed(end);
     
-    addLog(`${side === 'blue' ? 'Blue' : 'Red'} activated Sprint Mode for 30s!`);
+    const babyName = customBaby ? `👶 ${customBaby.name}` : (sideId === 'blue' ? 'Blue' : 'Red');
+    addLog(`⚡ "${babyName}" activated Sprint Mode for 30s!`);
     await updateFirebase({ 
-        [side === 'blue' ? 'sprintBlue' : 'sprintRed']: end
+        [spendingSide === 'blue' ? 'sprintBlue' : 'sprintRed']: end
     });
     setActiveModal(null);
   };
@@ -1406,11 +1884,75 @@ export default function App() {
 
           <button 
             onClick={handleLogin}
-            className="w-full py-4 bg-[#3b82f6] text-white font-black text-xs uppercase tracking-widest rounded-2xl border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer flex items-center justify-center gap-3"
+            className="w-full py-4 bg-[#3b82f6] text-white font-black text-xs uppercase tracking-widest rounded-2xl border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer flex items-center justify-center gap-3 mb-4"
           >
-            <span className="text-lg">🔐</span>
+            <span className="text-lg">⚙️</span>
             <span>Sign In with Google Account</span>
           </button>
+
+          <div className="my-4 flex items-center justify-center gap-2">
+            <div className="h-[2px] bg-black/10 flex-1" />
+            <span className="text-[9px] font-black uppercase text-black/55 tracking-wider font-mono">OR ACCESS BY EMAIL</span>
+            <div className="h-[2px] bg-black/10 flex-1" />
+          </div>
+
+          <form onSubmit={handleEmailLoginOrSignUp} className="space-y-3.5 text-left mb-4">
+            {isSignUp && (
+              <div>
+                <label className="text-[10px] font-black uppercase text-black/70 block mb-1">Commander Callsign *</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Maverick"
+                  value={signUpDisplayName}
+                  onChange={(e) => setSignUpDisplayName(e.target.value)}
+                  className="w-full bg-white border-2 border-black rounded-xl px-3 py-2 font-bold text-xs text-black placeholder-black/40 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:outline-none focus:translate-y-[1px] focus:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
+                  required
+                />
+              </div>
+            )}
+            <div>
+              <label className="text-[10px] font-black uppercase text-black/70 block mb-1">Email Address *</label>
+              <input
+                type="email"
+                placeholder="commander@battlegrid.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full bg-white border-2 border-black rounded-xl px-3 py-2 font-bold text-xs text-black placeholder-black/40 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:outline-none focus:translate-y-[1px] focus:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
+                required
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-black uppercase text-black/70 block mb-1">Secret Password *</label>
+              <input
+                type="password"
+                placeholder="••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full bg-white border-2 border-black rounded-xl px-3 py-2 font-bold text-xs text-black placeholder-black/40 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:outline-none focus:translate-y-[1px] focus:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              className={`w-full py-3 ${isSignUp ? 'bg-emerald-400 hover:bg-emerald-500' : 'bg-amber-400 hover:bg-amber-500'} text-black font-black text-xs uppercase tracking-wider rounded-xl border-3 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer text-center block`}
+            >
+              {isSignUp ? '✨ DEPLOY ACCOUNT' : '🔑 AUTHORIZED SIGN IN'}
+            </button>
+
+            <div className="text-center pt-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSignUp(!isSignUp);
+                  setLoginError(null);
+                }}
+                className="text-[9px] text-[#3b82f6] hover:underline font-black uppercase tracking-widest cursor-pointer inline-block"
+              >
+                {isSignUp ? 'Already registered? Sign In Instead' : 'Create Custom Callsign & New Account'}
+              </button>
+            </div>
+          </form>
 
           {loginError && (
             <div className="mt-6 bg-rose-50 border-2 border-rose-500 text-rose-950 p-4 rounded-xl text-left text-[11px] font-bold font-mono">
@@ -1437,6 +1979,331 @@ export default function App() {
         touchAction: 'none'
       }}
     >
+      {/* EPIC SPECTACULAR RESETS SCREEN TAKE OVER */}
+      {showEpicResetAnimation && (
+        <div className="fixed inset-0 z-[1000] flex flex-col items-center justify-center bg-black/95 text-white p-6 font-mono text-center select-none overflow-hidden">
+          {/* Neon warning grid */}
+          <div className="absolute inset-0 bg-[linear-gradient(rgba(18,16,16,0)_50%,_rgba(0,0,0,0.25)_50%),_linear-gradient(90deg,_rgba(255,0,0,0.06),_rgba(0,255,0,0)_95%)] bg-[size:100%_4px,_6px_100%] pointer-events-none" />
+          
+          <motion.div 
+            initial={{ scale: 0.5, rotate: -15, opacity: 0 }}
+            animate={{ scale: 1, rotate: 0, opacity: 1 }}
+            transition={{ type: "spring", stiffness: 120 }}
+            className="relative z-10 max-w-2xl bg-black border-4 border-red-600 rounded-3xl p-8 sm:p-12 shadow-[0_0_50px_10px_rgba(239,68,68,0.5)]"
+          >
+            {/* Pulsing nuclear icon container */}
+            <div className="text-8xl mb-6 select-none animate-bounce">☣️💥🚨</div>
+            
+            <h1 className="text-4xl sm:text-6xl font-black uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-red-500 via-yellow-400 to-orange-500">
+              THE GREAT RESET
+            </h1>
+            
+            <div className="h-1 bg-gradient-to-r from-transparent via-red-600 to-transparent my-6" />
+
+            <div className="text-base sm:text-lg font-black uppercase tracking-wider text-rose-400 font-mono mb-2">
+              🚨 TACTICAL CATACLYSM DETONATED 🚨
+            </div>
+
+            <p className="text-sm sm:text-lg text-white/90 leading-relaxed font-bold">
+              Commander <span className="text-yellow-400 font-black underline decoration-dashed decoration-2">{greatResetEvent?.triggeredBy || "An Unknown Elder"}</span> spent <span className="text-emerald-400 font-black font-mono">1,000 Faction Tokens</span> to initiate a tactical battlefield clearance on:
+            </p>
+
+            <div className="mt-4 px-4 py-3 border-2 border-red-500 bg-red-950/40 rounded-xl inline-block text-xl uppercase font-extrabold text-red-100 tracking-tight shadow-[0_0_15px_rgba(239,68,68,0.4)] animate-pulse">
+              🎯 TARGET: {greatResetEvent?.targetName ? greatResetEvent.targetName.toUpperCase() : (greatResetEvent?.target === 'both' ? 'ENTIRE BATTLEGRID (BOTH TEAMS)' : (greatResetEvent?.target === 'blue' ? 'BLUE TEAM STROLLER' : (greatResetEvent?.target === 'red' ? 'RED TEAM STROLLER' : 'CUSTOM SPONSOR BABY')))}
+            </div>
+
+            <div className="mt-8 text-[11px] uppercase tracking-widest text-white/50 animate-pulse">
+              🛡️ Sanitizing coordinates... purging paths... wiping trail indices...
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Dynamic Stroller / Baby Faction Command Hub */}
+      {userRole !== 'none' && (
+        <div className="fixed top-18 md:top-6 left-1/2 -translate-x-1/2 z-[40] flex items-center gap-1.5 sm:gap-2.5 bg-[#fdfaf2] border-3 border-black px-3 py-2 sm:px-5 sm:py-3 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] max-w-[95vw] overflow-x-auto whitespace-nowrap text-xs font-bold font-mono">
+          <span className="text-[10px] sm:text-xs font-black uppercase text-black select-none">🍼 HUB:</span>
+          {/* Blue Baby control */}
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedBabyId('blue');
+              addLog("Switching control to Blue Baby");
+            }}
+            className={`px-2.5 py-1 rounded-lg border border-black cursor-pointer uppercase font-black text-[8.5px] sm:text-[10px] tracking-tight transition-all ${
+              selectedBabyId === 'blue' 
+                ? 'bg-blue-600 text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' 
+                : 'bg-white text-blue-600 hover:bg-blue-50'
+            }`}
+          >
+            💙 Blue Baby
+          </button>
+          
+          {/* Red Baby control */}
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedBabyId('red');
+              addLog("Switching control to Red Baby");
+            }}
+            className={`px-2.5 py-1 rounded-lg border border-black cursor-pointer uppercase font-black text-[8.5px] sm:text-[10px] tracking-tight transition-all ${
+              selectedBabyId === 'red' 
+                ? 'bg-red-600 text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' 
+                : 'bg-white text-red-600 hover:bg-red-50'
+            }`}
+          >
+            ❤️ Red Baby
+          </button>
+
+          {/* Dynamic babies lists */}
+          {sponsoredBabies && sponsoredBabies.map((b) => (
+            <button
+              key={`hub-select-${b.id}`}
+              type="button"
+              onClick={() => {
+                setSelectedBabyId(b.id);
+                addLog(`Switching control to Custom Baby: "${b.name}"`);
+              }}
+              className="px-2.5 py-1 rounded-lg border border-black cursor-pointer uppercase font-black text-[8.5px] sm:text-[10px] tracking-tight transition-all flex items-center gap-1"
+              style={{
+                backgroundColor: selectedBabyId === b.id ? b.color : '#fff',
+                color: selectedBabyId === b.id ? '#fff' : b.color,
+                borderColor: '#000',
+                boxShadow: selectedBabyId === b.id ? '2px 2px 0px 0px rgba(0,0,0,1)' : 'none'
+              }}
+            >
+              <span>🍼</span>
+              <span>{b.name}</span>
+            </button>
+          ))}
+
+          {/* Sponsor Button */}
+          <button
+            type="button"
+            onClick={() => setIsSponsorModalOpen(true)}
+            className="px-2.5 py-1 bg-gradient-to-r from-emerald-400 to-teal-400 text-black rounded-lg border border-black cursor-pointer uppercase font-black text-[8.5px] sm:text-[10px] tracking-wider hover:opacity-90 active:translate-y-0.5 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] active:shadow-none"
+          >
+            👶 SPONSOR NEW
+          </button>
+        </div>
+      )}
+
+      {/* SPONSOR YOUR BABY MODAL */}
+      {isSponsorModalOpen && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <motion.div 
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="max-w-md w-full bg-[#fdfaf2] border-4 border-black rounded-3xl p-6 sm:p-8 text-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden"
+          >
+            {/* Visual Header */}
+            <div className="text-center mb-4">
+              <span className="text-4xl block mb-2 select-none">🍼🛝👶</span>
+              <h3 className="font-black text-2xl uppercase tracking-tight text-black">Sponsor Your Own Baby</h3>
+              <p className="text-[10px] text-emerald-600 font-extrabold uppercase tracking-wider font-mono">
+                🎁 Launch a custom stroller to the war battle grid (500 Tokens)
+              </p>
+            </div>
+
+            <form onSubmit={sponsorYourOwnBaby} className="space-y-4">
+              {/* Name */}
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-wider block mb-1">Stroller Callsign / Name</label>
+                <input 
+                  type="text" 
+                  value={sponsorName} 
+                  onChange={(e) => setSponsorName(e.target.value)} 
+                  placeholder="e.g. Speed Demon, Bubble Blow, etc." 
+                  maxLength={16}
+                  className="w-full bg-white text-black font-bold p-2.5 border-2 border-black rounded-xl focus:outline-none focus:ring-0 placeholder:text-gray-400"
+                />
+              </div>
+
+              {/* Color Preset Choice */}
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-wider block mb-1 col-span-full">Signature Laser Path Glow Color</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    { hex: '#22c55e', name: 'Lime' },
+                    { hex: '#06b6d4', name: 'Cyan' },
+                    { hex: '#a855f7', name: 'Purple' },
+                    { hex: '#ec4899', name: 'Pink' },
+                    { hex: '#f97316', name: 'Orange' },
+                    { hex: '#eab308', name: 'Gold' },
+                    { hex: '#3b82f6', name: 'Blue' },
+                    { hex: '#ef4444', name: 'Red' }
+                  ].map((preset) => {
+                    const isChosen = sponsorColor === preset.hex;
+                    return (
+                      <button
+                        key={`preset-${preset.hex}`}
+                        type="button"
+                        onClick={() => setSponsorColor(preset.hex)}
+                        className={`py-1.5 rounded-lg border-2 border-black font-black text-[9px] uppercase transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                          isChosen ? 'bg-black text-white scale-105' : 'bg-white hover:bg-gray-100'
+                        }`}
+                        style={{ borderRightColor: preset.hex, borderRightWidth: '6px' }}
+                      >
+                        {preset.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Spawn Side Selector */}
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-wider block mb-1">Initial Deployment Spawn Territory</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setSponsorSide('left')}
+                    className={`py-2 px-3 border-2 border-black rounded-xl font-black text-xs uppercase cursor-pointer transition-all ${
+                      sponsorSide === 'left' ? 'bg-[#ebf8ff] border-blue-500 text-blue-700 shadow-[2px_2px_0px_0px_#3b82f6]' : 'bg-white hover:bg-gray-50'
+                    }`}
+                  >
+                    💙 Left (Blue Side)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSponsorSide('right')}
+                    className={`py-2 px-3 border-2 border-black rounded-xl font-black text-xs uppercase cursor-pointer transition-all ${
+                      sponsorSide === 'right' ? 'bg-[#fff5f5] border-red-500 text-red-700 shadow-[2px_2px_0px_0px_#ef4444]' : 'bg-white hover:bg-gray-50'
+                    }`}
+                  >
+                    ❤️ Right (Red Side)
+                  </button>
+                </div>
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  className="w-full py-3 bg-emerald-300 hover:bg-emerald-400 text-black border-3 border-black text-xs font-black uppercase tracking-widest rounded-xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 transition-all text-center cursor-pointer"
+                >
+                  🚀 LAUNCH COMPACT {userRole === 'admin' ? 'FREE (ADMIN)' : '500 TOKENS'}
+                </button>
+              </div>
+            </form>
+
+            <div className="text-center mt-4">
+              <button 
+                type="button"
+                onClick={() => setIsSponsorModalOpen(false)}
+                className="text-black/55 hover:text-black font-black text-[10px] uppercase tracking-wider underline cursor-pointer"
+              >
+                Close & Dismiss
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* THE GREAT RESET MODAL */}
+      {isGreatResetModalOpen && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/65 backdrop-blur-sm p-4">
+          <motion.div 
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="max-w-md w-full bg-[#fdfaf2] border-4 border-black rounded-3xl p-6 sm:p-8 text-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden"
+          >
+            {/* Pulsing neon red border lines */}
+            <div className="absolute inset-x-0 top-0 h-1.5 bg-red-500 animate-pulse" />
+
+            <div className="text-center mb-6">
+              <span className="text-5xl block mb-2 select-none animate-bounce">🚨</span>
+              <h3 className="font-black text-2xl sm:text-3xl uppercase tracking-tighter text-rose-600">THE GREAT RESET</h3>
+              <p className="text-[10px] text-rose-500 font-extrabold uppercase tracking-widest font-mono mt-1">
+                💥 Tactical Purge - Clear Paths & Reset Spawn Station 💥
+              </p>
+            </div>
+
+            <div className="bg-yellow-100 border-2 border-black p-4 rounded-2xl mb-6 text-xs text-left leading-relaxed font-bold">
+              ⚡ <strong className="uppercase">Tactical Report:</strong> Running the nuclear purges instantly wipe coordinates and trail markings on the chosen stroller faction.
+              <p className="mt-1 text-[11px] text-black/70">Wipe progress, clear obstacles, or reset your custom baby's territory.</p>
+            </div>
+
+            <div className="space-y-3">
+              <label className="text-[10px] font-black uppercase tracking-wider block mb-1">Target Faction for Elimination:</label>
+              
+              {/* Reset Blue Stroller */}
+              <button
+                type="button"
+                onClick={() => triggerGreatReset('blue')}
+                className="w-full py-2.5 bg-blue-100 hover:bg-blue-200 text-blue-800 border-2 border-black font-black text-xs uppercase rounded-xl flex items-center justify-between px-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 cursor-pointer"
+              >
+                <span>💙 Reset Blue Team Stroller</span>
+                <span className="bg-white border text-[9px] px-1.5 rounded">{userRole === 'admin' ? 'FREE' : '1000 T'}</span>
+              </button>
+
+              {/* Reset Red Stroller */}
+              <button
+                type="button"
+                onClick={() => triggerGreatReset('red')}
+                className="w-full py-2.5 bg-red-100 hover:bg-red-200 text-red-800 border-2 border-black font-black text-xs uppercase rounded-xl flex items-center justify-between px-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 cursor-pointer"
+              >
+                <span>❤️ Reset Red Team Stroller</span>
+                <span className="bg-white border text-[9px] px-1.5 rounded">{userRole === 'admin' ? 'FREE' : '1000 T'}</span>
+              </button>
+
+              {/* Reset All Strollers */}
+              <button
+                type="button"
+                onClick={() => triggerGreatReset('both')}
+                className="w-full py-2.5 bg-yellow-400 hover:bg-yellow-500 text-black border-2 border-black font-black text-xs uppercase rounded-xl flex items-center justify-between px-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 cursor-pointer"
+              >
+                <span>💥 Reset BOTH Core Teams</span>
+                <span className="bg-white border text-[9px] px-1.5 rounded">{userRole === 'admin' ? 'FREE' : '1000 T'}</span>
+              </button>
+
+              {/* Reset Custom Babies */}
+              {sponsoredBabies && sponsoredBabies.length > 0 && (
+                <div className="border-t border-black/10 pt-3 space-y-2 max-h-40 overflow-y-auto pr-1">
+                  <label className="text-[8.5px] font-black uppercase text-black/50 tracking-wider">Reset Sponsored Baby:</label>
+                  {sponsoredBabies.map(b => (
+                    <button
+                      key={`reset-baby-${b.id}`}
+                      type="button"
+                      onClick={() => triggerGreatReset(b.id)}
+                      className="w-full py-2 bg-white hover:bg-gray-50 border-2 border-black font-black text-xs rounded-xl flex items-center justify-between px-4 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+                      style={{ borderLeftColor: b.color, borderLeftWidth: '6px' }}
+                    >
+                      <span className="text-black leading-none uppercase text-[10px]">👶 {b.name}</span>
+                      <span className="text-[9px] opacity-70 font-mono">{userRole === 'admin' ? 'FREE' : '1000 T'}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* If player is admin, show full hard clean option */}
+              {userRole === 'admin' && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await handleReset();
+                    setIsGreatResetModalOpen(false);
+                  }}
+                  className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white border-2 border-black font-black text-xs uppercase rounded-xl shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 cursor-pointer"
+                >
+                  ⚡ FULL FIELD INSTANT PURGE (ADMIN CLEAN)
+                </button>
+              )}
+            </div>
+
+            <div className="text-center mt-6">
+              <button 
+                type="button"
+                onClick={() => setIsGreatResetModalOpen(false)}
+                className="text-black/55 hover:text-black font-black text-[10px] uppercase tracking-wider underline cursor-pointer"
+              >
+                Dismiss & Dismiss
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       {/* Team Selection Overlay */}
       {userRole === 'none' && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-[#eae6dc]/80 backdrop-blur-sm p-4 overflow-y-auto">
@@ -2247,134 +3114,197 @@ export default function App() {
       )}
 
       {/* FIXED BOTTOM HUD (DESKTOP) */}
-      <div className="hidden md:flex fixed bottom-0 left-0 w-full h-24 bg-[#fcfaf4] border-t-4 border-black items-center justify-between px-8 z-50 shadow-[0_-5px_0px_0px_rgba(0,0,0,1)] text-black">
+      <div className="hidden md:flex fixed bottom-0 left-0 w-full h-24 bg-[#fcfaf4] border-t-4 border-black items-center justify-between px-6 z-50 shadow-[0_-5px_0px_0px_rgba(0,0,0,1)] text-black">
         
-        {/* Blue Side HUD */}
-        <div className={`flex items-center gap-4 transition-opacity ${!canControl('blue') ? 'opacity-30 pointer-events-none grayscale' : ''}`}>
-          <div className="flex flex-col group cursor-pointer bg-white border-2 border-black p-1.5 rounded-xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all" onClick={() => setIsPurchaseModalOpen(true)}>
-            <span className="text-[10px] text-blue-600 font-black uppercase tracking-wider">💙 Team Blue</span>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="text-[10px] text-black font-mono font-bold">
-                {user ? `${profile?.currentTokens || 0} Tokens` : '$1,000 Base'}
-              </span>
-              <button className="text-[8px] bg-yellow-300 text-black border border-black font-black rounded px-1 transition-colors uppercase">REFILL</button>
-            </div>
-            {sprintBlue > Date.now() && <span className="text-[8px] text-blue-600 font-black tracking-widest animate-pulse">⚡ SPRINT ACTIVE</span>}
+        {/* Left Column: Selected Stroller Telemetry & List Selector */}
+        <div className="flex items-center gap-3 bg-white border-2 border-black p-1.5 rounded-xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] max-w-xs select-none">
+          {/* Active Unit Face/Avatar image bubble */}
+          <div className="w-12 h-12 rounded-lg border-2 border-black flex items-center justify-center relative overflow-hidden" style={{ backgroundColor: `${selectedColor}15` }}>
+            <div className="absolute inset-0 opacity-15" style={{ backgroundColor: selectedColor }} />
+            {selectedBabyId === 'blue' ? (
+              <span className="text-2xl z-10">💙</span>
+            ) : selectedBabyId === 'red' ? (
+              <span className="text-2xl z-10">❤️</span>
+            ) : selectedBaby ? (
+              <img
+                src={`https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(selectedBaby.name)}`}
+                className="w-10 h-10 object-contain z-10"
+                referrerPolicy="no-referrer"
+                alt={selectedName}
+              />
+            ) : (
+              <span className="text-xl z-10">♟️</span>
+            )}
           </div>
 
-          <div className="flex gap-2">
-            <button 
-              onClick={() => setActiveModal({ side: 'blue', type: 'move' })}
-              className="w-10 h-10 flex flex-col items-center justify-center bg-[#3b82f6] border-2 border-black rounded-lg text-white font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
-              title="Move"
+          <div className="flex flex-col min-w-40">
+            {/* Quick dropdown select trigger built direct in the HUD so hikers don't get lost on the map! */}
+            <div className="flex items-center gap-1 my-0.5">
+              <span className="text-[10px] font-black uppercase tracking-tight" style={{ color: selectedColor }}>
+                🎯 {selectedName}
+              </span>
+              <span className="text-[8px] font-mono opacity-60">({selectedPos.x}, {selectedPos.y})</span>
+            </div>
+
+            {/* Selector lists */}
+            <select
+              value={selectedBabyId}
+              onChange={(e) => {
+                setSelectedBabyId(e.target.value);
+                addLog(`Selector switched active unit back-end target to: ${e.target.value}`);
+              }}
+              className="text-[9px] font-black uppercase border border-black rounded px-1.5 py-0.5 bg-gray-50 mt-1 cursor-pointer outline-none"
             >
-              <span className="text-sm">💥</span>
-              <span className="text-[6px] tracking-tighter">MOVE</span>
-            </button>
-            <button 
-              onClick={() => setActiveModal({ side: 'blue', type: 'grid' })}
-              className="w-10 h-10 flex flex-col items-center justify-center bg-blue-105 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
-              title="Push Grid"
-            >
-              <span className="text-sm">♟️</span>
-              <span className="text-[6px] tracking-tighter">GRID</span>
-            </button>
-            <button 
-              onClick={() => setActiveModal({ side: 'blue', type: 'teleport' })}
-              className="w-10 h-10 flex flex-col items-center justify-center bg-purple-200 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
-              title="Teleport"
-            >
-              <span className="text-sm">🔮</span>
-              <span className="text-[6px] tracking-tighter">TELE</span>
-            </button>
-            <button 
-              onClick={() => setActiveModal({ side: 'blue', type: 'wall' })}
-              className="w-10 h-10 flex flex-col items-center justify-center bg-slate-200 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
-              title="Wall"
-            >
-              <span className="text-sm">🚧</span>
-              <span className="text-[6px] tracking-tighter">WALL</span>
-            </button>
-            <button 
-              onClick={() => setActiveModal({ side: 'blue', type: 'mine' })}
-              className="w-10 h-10 flex flex-col items-center justify-center bg-orange-200 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
-              title="Mine"
-            >
-              <span className="text-sm">💣</span>
-              <span className="text-[6px] tracking-tighter">MINE</span>
-            </button>
-            <button 
-              onClick={() => setActiveModal({ side: 'blue', type: 'jackpot' })}
-              className="w-10 h-10 flex flex-col items-center justify-center bg-yellow-200 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
-              title="Luck"
-            >
-              <span className="text-sm">🎰</span>
-              <span className="text-[6px] tracking-tighter">LUCK</span>
-            </button>
-            <button 
-              onClick={() => handleSprint('blue')}
-              className="w-10 h-10 flex flex-col items-center justify-center bg-cyan-200 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
-              title="Sprint Run"
-            >
-              <span className="text-sm">🏃</span>
-              <span className="text-[6px] tracking-tighter">RUN</span>
-            </button>
-            <button 
-              onClick={() => setActiveModal({ side: 'blue', type: 'slingshot' })}
-              className="w-10 h-10 flex flex-col items-center justify-center bg-rose-200 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer animate-pulse"
-              title="Baby Slingshot Launch (100 Tokens)"
-            >
-              <span className="text-sm">🏹</span>
-              <span className="text-[6px] tracking-tighter">SLING</span>
-            </button>
-            
-            {hasBlueSideMines && (
-              <div className="flex gap-1">
-                {!blueMinesRevealed && (
-                  <button 
-                    onClick={() => handleRevealMines('blue')}
-                    className="w-10 h-10 flex flex-col items-center justify-center bg-amber-200 border-2 border-black rounded-lg text-black font-bold text-[8px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
-                    title="Reveal Hidden Mines (100 Tokens)"
-                  >
-                    <span>👁️</span>
-                    <span className="text-[5px]">MINES</span>
-                  </button>
-                )}
-                {blueMinesRevealed && (
-                  <button 
-                    onClick={() => handleClearMines('blue')}
-                    className="w-10 h-10 flex flex-col items-center justify-center bg-rose-200 border-2 border-black rounded-lg text-black font-bold text-[8px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
-                    title="Clear All Mines (150 Tokens)"
-                  >
-                    <span>🧹</span>
-                    <span className="text-[5px]">CLEAR</span>
-                  </button>
-                )}
-              </div>
-            )}
+              <option value="blue">💙 Team Blue Stroller</option>
+              <option value="red">❤️ Team Red Stroller</option>
+              {sponsoredBabies && sponsoredBabies.map(b => (
+                <option key={b.id} value={b.id}>👶 Baby: {b.name.toUpperCase()} ({b.side === 'left' ? 'LEFT' : 'RIGHT'})</option>
+              ))}
+            </select>
+
+            <div className="flex items-center gap-1.5 mt-1">
+              {/* Token Display and Refill */}
+              <span className="text-[9px] font-mono font-bold bg-yellow-100 border border-black px-1.5 py-0.2 rounded-sm text-yellow-800">
+                🪙 {user ? `${profile?.currentTokens || 0} Tok` : '$1,000 Base'}
+              </span>
+              <button 
+                onClick={() => setIsPurchaseModalOpen(true)}
+                className="text-[8px] bg-yellow-300 hover:bg-yellow-400 text-black border border-black font-black rounded px-1 cursor-pointer transition-all"
+              >
+                + REFILL
+              </button>
+              {selectedSprintActive && (
+                <span className="text-[7.5px] text-cyan-700 font-extrabold tracking-tight bg-cyan-100 border border-cyan-400 px-1 rounded animate-pulse">
+                  ⚡ SPRINT
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Global Controls HUD */}
-        <div className="flex items-center gap-3">
-          {userRole === 'admin' && (
-            <button 
-              onClick={() => setUserRole('none')}
-              className="w-12 h-12 flex flex-col items-center justify-center bg-purple-300 border-2 border-black rounded-xl hover:-translate-y-0.5 active:translate-y-0.5 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] text-black cursor-pointer"
-              title="Change Side"
-            >
-              <div className="text-[8px] font-black uppercase">ADMIN</div>
-              <div className="text-[7px] font-bold">EXIT</div>
-            </button>
-          )}
+        {/* Middle Column: Unified 8 Abilities Deck targeting the currently selected unit */}
+        <div className={`flex items-center gap-1.5 transition-all ${!canControl(selectedBabyId) ? 'opacity-30 pointer-events-none grayscale' : ''}`}>
           <button 
-            onClick={handleReset}
-            className="w-12 h-12 flex items-center justify-center bg-rose-300 border-2 border-black rounded-xl hover:-translate-y-0.5 active:translate-y-0.5 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] text-black cursor-pointer"
-            title="Reset Game"
+            onClick={() => setActiveModal({ side: selectedBabyId, type: 'move' })}
+            className="w-11 h-11 flex flex-col items-center justify-center bg-[#3b82f6] border-2 border-black rounded-xl text-white font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2.5px_2.5px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+            title="Move pack direct steps"
           >
-            <RotateCcw size={18} className="font-bold stroke-[3]" />
+            <span className="text-base leading-none">💥</span>
+            <span className="text-[6.5px] font-black tracking-tighter mt-0.5">MOVE</span>
           </button>
           
+          <button 
+            onClick={() => setActiveModal({ side: selectedBabyId, type: 'grid' })}
+            className="w-11 h-11 flex flex-col items-center justify-center bg-blue-100 border-2 border-black rounded-xl text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2.5px_2.5px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+            title="Push standard grid segments"
+          >
+            <span className="text-base leading-none">♟️</span>
+            <span className="text-[6.5px] font-black tracking-tighter mt-0.5">GRID</span>
+          </button>
+
+          <button 
+            onClick={() => handleTeleport(selectedBabyId)}
+            className="w-11 h-11 flex flex-col items-center justify-center bg-purple-200 border-2 border-black rounded-xl text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2.5px_2.5px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+            title="Teleport baby stroller instantly"
+          >
+            <span className="text-base leading-none">🔮</span>
+            <span className="text-[6.5px] font-black tracking-tighter mt-0.5">TELE</span>
+          </button>
+
+          <button 
+            onClick={() => setActiveModal({ side: selectedBabyId, type: 'wall' })}
+            className="w-11 h-11 flex flex-col items-center justify-center bg-slate-200 border-2 border-black rounded-xl text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2.5px_2.5px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+            title="Fortify brick brick build-up blocking lines"
+          >
+            <span className="text-base leading-none">🚧</span>
+            <span className="text-[6.5px] font-black tracking-tighter mt-0.5">WALL</span>
+          </button>
+
+          <button 
+            onClick={() => setActiveModal({ side: selectedBabyId, type: 'mine' })}
+            className="w-11 h-11 flex flex-col items-center justify-center bg-orange-200 border-2 border-black rounded-xl text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2.5px_2.5px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+            title="Deploys deep trap minefields in opposition lines"
+          >
+            <span className="text-base leading-none">💣</span>
+            <span className="text-[6.5px] font-black tracking-tighter mt-0.5">MINE</span>
+          </button>
+
+          <button 
+            onClick={() => handleJackpot(selectedBabyId)}
+            className="w-11 h-11 flex flex-col items-center justify-center bg-yellow-250 border-2 border-black rounded-xl text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2.5px_2.5px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+            title="Test lucky ticket payouts"
+          >
+            <span className="text-base leading-none">🎰</span>
+            <span className="text-[6.5px] font-black tracking-tighter mt-0.5">LUCK</span>
+          </button>
+
+          <button 
+            onClick={() => handleSprint(selectedBabyId)}
+            className="w-11 h-11 flex flex-col items-center justify-center bg-cyan-200 border-2 border-black rounded-xl text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2.5px_2.5px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+            title="Enable fast 2x physical sprint multipliers"
+          >
+            <span className="text-base leading-none">🏃</span>
+            <span className="text-[6.5px] font-black tracking-tighter mt-0.5">RUN</span>
+          </button>
+
+          <button 
+            onClick={() => setActiveModal({ side: selectedBabyId, type: 'slingshot' })}
+            className="w-11 h-11 flex flex-col items-center justify-center bg-rose-200 border-2 border-black rounded-xl text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2.5px_2.5px_0px_0px_rgba(0,0,0,1)] cursor-pointer animate-pulse"
+            title="Slingshot Baby (Cost: 100 Tokens)"
+          >
+            <span className="text-sm leading-none">🏹</span>
+            <span className="text-[6.5px] font-black tracking-tighter mt-0.5">SLING</span>
+          </button>
+
+          {/* Dynamic Mines Clear / Reclamation on Current unit lanes half */}
+          {selectedSideHasMines && (
+            <div className="flex gap-1 border-l-2 border-dashed border-gray-300 pl-1.5 ml-1">
+              {!selectedSideMinesRevealed ? (
+                <button 
+                  onClick={() => handleRevealMines(selectedBabySide)}
+                  className="w-11 h-11 flex flex-col items-center justify-center bg-amber-200 border-2 border-black rounded-xl text-black font-bold text-[8px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2.5px_2.5px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+                  title="Reveal mines targeting coordinates (100 Tokens)"
+                >
+                  <span className="text-sm">👁️</span>
+                  <span className="text-[5px] tracking-tight">REVEAL</span>
+                </button>
+              ) : (
+                <button 
+                  onClick={() => handleClearMines(selectedBabySide)}
+                  className="w-11 h-11 flex flex-col items-center justify-center bg-red-200 border-2 border-black rounded-xl text-black font-bold text-[8px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2.5px_2.5px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+                  title="Clean all detonators on side (150 Tokens)"
+                >
+                  <span className="text-sm">🧹</span>
+                  <span className="text-[5px] tracking-tight">CLEAR</span>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Right Column: Global actions and controls deck */}
+        <div className="flex items-center gap-2 select-none">
+          {/* Snap-Lock tracking tracker */}
+          <button 
+            onClick={() => setLiveTracking(!liveTracking)}
+            className={`h-12 px-3 flex flex-col items-center justify-center border-2 border-black rounded-xl hover:-translate-y-0.5 active:translate-y-0.5 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] text-black cursor-pointer uppercase transition-all ${liveTracking ? 'bg-emerald-300 font-extrabold shadow-[3px_3px_0px_0px_#047857]' : 'bg-gray-100 hover:bg-gray-200 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]'}`}
+            title="Auto lock camera tracking onto our selected Baby Stroller."
+          >
+            <div className="text-[8px] font-black tracking-wider">📡 LIVE TRACK</div>
+            <div className="text-[7.5px] font-black mt-0.5">{liveTracking ? '🔒 LOCKED' : '🔓 OFF'}</div>
+          </button>
+
+          {/* Glowing hot red great reset button */}
+          <button 
+            onClick={() => setIsGreatResetModalOpen(true)}
+            className="w-12 h-12 flex items-center justify-center bg-red-600 hover:bg-red-700 border-2 border-black rounded-xl hover:-translate-y-0.5 active:translate-y-0.5 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] text-white cursor-pointer relative animate-[pulse_1.5s_infinite]"
+            style={{ boxShadow: '0 0 15px #ef4444' }}
+            title="The Great Reset: sabotage a chosen racer or reset all lines (1,000 Tokens)"
+          >
+            <RotateCcw size={18} className="font-bold stroke-[3] text-white" />
+          </button>
+          
+          {/* Zoom controls hub */}
           <div className="flex items-center border-2 border-black bg-white rounded-xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] overflow-hidden">
             <button 
               onClick={() => handleZoom('in')}
@@ -2389,25 +3319,15 @@ export default function App() {
               <Minus size={14} className="stroke-[3]" />
             </button>
           </div>
-
-          {/* Snap-Lock tracking button */}
-          <button 
-            onClick={() => setLiveTracking(!liveTracking)}
-            className={`w-28 h-12 flex flex-col items-center justify-center border-2 border-black rounded-xl hover:-translate-y-0.5 active:translate-y-0.5 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] text-black cursor-pointer uppercase transition-all ${liveTracking ? 'bg-emerald-300 font-extrabold shadow-[3px_3px_0px_0px_#047857]' : 'bg-gray-100 hover:bg-gray-200 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]'}`}
-            title="Snap Lock camera tracking onto our player baby"
-          >
-            <div className="text-[8px] font-black tracking-wider">📡 LIVE TRACK</div>
-            <div className="text-[7.5px] font-black mt-0.5">{liveTracking ? '🔒 LOCKED' : '🔓 OFF'}</div>
-          </button>
         </div>
 
-        {/* Global Log Toggle */}
-        <div className="fixed right-4 md:right-6 bottom-48 md:bottom-28 z-[60] flex flex-col items-end gap-2.5">
+        {/* Logs container anchor floating tab */}
+        <div className="fixed right-4 md:right-6 bottom-28 z-[60] flex flex-col items-end gap-2.5">
            <button 
              onClick={() => setIsLogOpen(!isLogOpen)}
-             className="bg-white border-3 border-black px-4 py-2 rounded-full text-black hover:-translate-y-0.5 active:translate-y-0.5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-transform cursor-pointer"
+             className="bg-[#fcfaf4] border-2 border-black px-4 py-1.5 rounded-full text-black hover:-translate-y-0.5 active:translate-y-0.5 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] transition-transform cursor-pointer"
            >
-             <div className="text-[10px] uppercase font-black tracking-wider flex items-center gap-1">
+             <div className="text-[10px] uppercase font-black tracking-wider flex items-center gap-1.5">
                <span>📜</span> {isLogOpen ? 'Hide Logs' : 'Show Logs'}
              </div>
            </button>
@@ -2416,7 +3336,7 @@ export default function App() {
              <motion.div 
                initial={{ opacity: 0, y: 10, scale: 0.95 }}
                animate={{ opacity: 1, y: 0, scale: 1 }}
-               className="w-72 max-w-[calc(100vw-32px)] h-60 md:h-64 bg-[#fffef4] border-3 border-black rounded-2xl p-4 overflow-y-auto font-mono text-[9px] shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] text-black text-left"
+               className="w-72 max-w-[calc(100vw-32px)] h-64 bg-[#fffef4] border-3 border-black rounded-2xl p-4 overflow-y-auto font-mono text-[9px] shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] text-black text-left"
              >
                <div className="text-black/50 uppercase tracking-widest font-black mb-2.5 border-b-2 border-black pb-1.5 flex justify-between">
                  <span>🌐 Activity Log</span>
@@ -2431,290 +3351,184 @@ export default function App() {
            )}
         </div>
 
-        {/* Red Side HUD */}
-        <div className={`flex items-center gap-4 transition-opacity ${!canControl('red') ? 'opacity-30 pointer-events-none grayscale' : ''}`}>
-          <div className="flex gap-2">
-            {hasRedSideMines && (
-              <div className="flex gap-1">
-                {!redMinesRevealed && (
-                  <button 
-                    onClick={() => handleRevealMines('red')}
-                    className="w-10 h-10 flex flex-col items-center justify-center bg-amber-200 border-2 border-black rounded-lg text-black font-bold text-[8px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
-                    title="Reveal Hidden Mines (100 Tokens)"
-                  >
-                    <span>👁️</span>
-                    <span className="text-[5px]">MINES</span>
-                  </button>
-                )}
-                {redMinesRevealed && (
-                  <button 
-                    onClick={() => handleClearMines('red')}
-                    className="w-10 h-10 flex flex-col items-center justify-center bg-rose-200 border-2 border-black rounded-lg text-black font-bold text-[8px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
-                    title="Clear All Mines (150 Tokens)"
-                  >
-                    <span>🧹</span>
-                    <span className="text-[5px]">CLEAR</span>
-                  </button>
-                )}
-              </div>
-            )}
-            <button 
-              onClick={() => handleSprint('red')}
-              className="w-10 h-10 flex flex-col items-center justify-center bg-cyan-200 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
-              title="Sprint Run"
-            >
-              <span className="text-sm">🏃</span>
-              <span className="text-[6px] tracking-tighter">RUN</span>
-            </button>
-            <button 
-              onClick={() => setActiveModal({ side: 'red', type: 'slingshot' })}
-              className="w-10 h-10 flex flex-col items-center justify-center bg-rose-200 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer animate-pulse"
-              title="Baby Slingshot Launch (100 Tokens)"
-            >
-              <span className="text-sm">🏹</span>
-              <span className="text-[6px] tracking-tighter">SLING</span>
-            </button>
-            <button 
-              onClick={() => setActiveModal({ side: 'red', type: 'jackpot' })}
-              className="w-10 h-10 flex flex-col items-center justify-center bg-yellow-200 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
-              title="Lucky Jackpot"
-            >
-              <span className="text-sm">🎰</span>
-              <span className="text-[6px] tracking-tighter">LUCK</span>
-            </button>
-            <button 
-              onClick={() => setActiveModal({ side: 'red', type: 'mine' })}
-              className="w-10 h-10 flex flex-col items-center justify-center bg-orange-200 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
-              title="Minefield"
-            >
-              <span className="text-sm">💣</span>
-              <span className="text-[6px] tracking-tighter">MINE</span>
-            </button>
-            <button 
-              onClick={() => setActiveModal({ side: 'red', type: 'wall' })}
-              className="w-10 h-10 flex flex-col items-center justify-center bg-slate-250 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
-              title="Fortify Wall"
-            >
-              <span className="text-sm">🚧</span>
-              <span className="text-[6px] tracking-tighter">WALL</span>
-            </button>
-            <button 
-              onClick={() => setActiveModal({ side: 'red', type: 'teleport' })}
-              className="w-10 h-10 flex flex-col items-center justify-center bg-purple-200 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
-              title="Teleport"
-            >
-              <span className="text-sm">🔮</span>
-              <span className="text-[6px] tracking-tighter">TELE</span>
-            </button>
-            <button 
-              onClick={() => setActiveModal({ side: 'red', type: 'grid' })}
-              className="w-10 h-10 flex flex-col items-center justify-center bg-blue-105 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
-              title="Push Grid"
-            >
-              <span className="text-sm">♟️</span>
-              <span className="text-[6px] tracking-tighter">GRID</span>
-            </button>
-            <button 
-              onClick={() => setActiveModal({ side: 'red', type: 'move' })}
-              className="w-10 h-10 flex flex-col items-center justify-center bg-[#ef4444] border-2 border-black rounded-lg text-white font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
-              title="Move Pack"
-            >
-              <span className="text-sm">💥</span>
-              <span className="text-[6px] tracking-tighter">MOVE</span>
-            </button>
-          </div>
-          
-          <div className="flex flex-col items-end group cursor-pointer bg-white border-2 border-black p-1.5 rounded-xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all" onClick={() => setIsPurchaseModalOpen(true)}>
-            <span className="text-[10px] text-red-600 font-black uppercase tracking-wider">❤️ Team Red</span>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <button className="text-[8px] bg-yellow-300 text-black border border-black font-black rounded px-1 transition-colors uppercase">REFILL</button>
-              <span className="text-[10px] text-black font-mono font-bold">
-                {user ? `${profile?.currentTokens || 0} Tokens` : '$1,000 Base'}
-              </span>
-            </div>
-            {sprintRed > Date.now() && <span className="text-[8px] text-red-600 font-black tracking-widest animate-pulse">⚡ SPRINT ACTIVE</span>}
-          </div>
-        </div>
       </div>
 
       {/* MOBILE-ONLY BOTTOM HUD (Glow/Neobrutalist buttons drawer) */}
       <div className="flex md:hidden fixed bottom-0 left-0 w-full bg-[#fcfaf4] border-t-4 border-black z-50 p-3 shadow-[0_-4px_0px_0px_rgba(0,0,0,1)] text-black flex-col select-none font-sans">
-        {/* Dynamic Controls Header (Active Side Toggler / Indicator & Token Display) */}
-        <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-black/10">
-          <div className="flex gap-2 items-center">
-            {(userRole === 'admin' || userRole === 'none' || isDevMode) ? (
-              <div className="flex border-2 border-black rounded-xl overflow-hidden bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                <button 
-                  type="button"
-                  onClick={() => setMobileActiveSide('blue')}
-                  className={`px-3 py-1 text-[10px] font-black uppercase transition-all cursor-pointer ${mobileActiveSide === 'blue' ? 'bg-[#3b82f6] text-white' : 'bg-white text-[#3b82f6]'}`}
-                >
-                  💙 Blue
-                </button>
-                <button 
-                  type="button"
-                  onClick={() => setMobileActiveSide('red')}
-                  className={`px-3 py-1 text-[10px] font-black uppercase transition-all cursor-pointer ${mobileActiveSide === 'red' ? 'bg-[#ef4444] text-white' : 'bg-white text-[#ef4444]'}`}
-                >
-                  ❤️ Red
-                </button>
-              </div>
-            ) : (
-              <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-xl border-2 border-black inline-block shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${
-                mobileActiveSide === 'blue' ? 'bg-[#ebf8ff] text-[#2b6cb0] border-[#3b82f6]' : 'bg-[#fff5f5] text-[#c53030] border-[#ef4444]'
-              }`}>
-                {mobileActiveSide === 'blue' ? '💙 Blue Team' : '❤️ Red Team'}
-              </span>
-            )}
-            
-            {/* Sprint Active Badge */}
-            {((mobileActiveSide === 'blue' ? sprintBlue : sprintRed) > Date.now()) && (
-              <span className="text-[8px] px-2 py-0.5 rounded bg-cyan-100 text-[#0891b2] border-2 border-cyan-400 font-black animate-pulse uppercase tracking-wide">
-                ⚡ SPRINT
+        {/* Row 1: Active Stroller details, Telemetry info, and budget indicators */}
+        <div className="flex items-center justify-between mb-2 pb-2 border-b border-black/10">
+          <div className="flex gap-1.5 items-center">
+            {/* Minimal Unit selector dropdown */}
+            <select
+              value={selectedBabyId}
+              onChange={(e) => {
+                setSelectedBabyId(e.target.value);
+                addLog(`Selector switched target unit to: ${e.target.value}`);
+              }}
+              className="text-[9px] font-black uppercase border border-black rounded bg-white px-1 py-0.5 cursor-pointer max-w-[120px] outline-none"
+            >
+              <option value="blue">💙 Blue Team</option>
+              <option value="red">❤️ Red Team</option>
+              {sponsoredBabies && sponsoredBabies.map(b => (
+                <option key={b.id} value={b.id}>👶 {b.name.toUpperCase()}</option>
+              ))}
+            </select>
+
+            <span className="text-[7.5px] font-mono opacity-50 font-bold">({selectedPos.x}, {selectedPos.y})</span>
+
+            {/* Sprint timer active badge */}
+            {selectedSprintActive && (
+              <span className="text-[7px] bg-cyan-100 text-[#0891b2] border border-cyan-300 px-1 py-0.2 rounded font-black animate-pulse font-mono">
+                ⚡ RUN
               </span>
             )}
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-mono font-black border-2 border-black px-2 py-0.5 rounded-xl bg-white shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">
+            {/* Tokens indicator */}
+            <span className="text-[9px] font-mono font-black border border-black px-1.5 py-0.5 rounded bg-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
               🪙 {user ? `${profile?.currentTokens || 0} T` : 'Base'}
             </span>
             
-            <button 
-              type="button"
-              onClick={handleReset}
-              className="w-6.5 h-6.5 flex items-center justify-center bg-rose-200 hover:bg-rose-300 border-2 border-black rounded-lg shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 text-black cursor-pointer"
-              title="Reset Game"
-            >
-              <RotateCcw size={11} className="stroke-[3]" />
-            </button>
-            
-            <div className="flex items-center border-2 border-black bg-white rounded-lg shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] overflow-hidden h-6.5">
-              <button 
-                type="button"
-                onClick={() => handleZoom('in')}
-                className="w-5.5 h-full flex items-center justify-center bg-gray-50 border-r border-black cursor-pointer font-black text-xs"
-              >
-                +
-              </button>
-              <button 
-                type="button"
-                onClick={() => handleZoom('out')}
-                className="w-5.5 h-full flex items-center justify-center bg-gray-50 cursor-pointer font-black text-xs"
-              >
-                -
-              </button>
-            </div>
-
+            {/* Purchase Modal button */}
             <button 
               type="button"
               onClick={() => setIsPurchaseModalOpen(true)}
-              className="text-[9px] bg-yellow-300 hover:bg-yellow-400 text-black border-2 border-black font-black rounded-lg px-2 py-0.5 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] uppercase cursor-pointer"
+              className="text-[8.5px] bg-yellow-300 border border-black font-black rounded px-1.5 py-0.5 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] uppercase cursor-pointer"
             >
               BUY
+            </button>
+
+            {/* Great Reset trigger */}
+            <button 
+              type="button"
+              onClick={() => setIsGreatResetModalOpen(true)}
+              className="w-6 h-6 flex items-center justify-center bg-red-600 border border-black rounded shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] font-black text-white cursor-pointer select-none animate-[pulse_1.5s_infinite]"
+              style={{ boxShadow: '0 0 8px #ef4444' }}
+              title="Sabotage Reset"
+            >
+              <RotateCcw size={10} className="text-white fill-white stroke-[3.5]" />
+            </button>
+
+            {/* Snaplock track */}
+            <button 
+              type="button"
+              onClick={() => setLiveTracking(!liveTracking)}
+              className={`text-[8px] border border-black px-1.5 py-0.5 rounded font-black ${liveTracking ? 'bg-emerald-300' : 'bg-gray-100'}`}
+            >
+              📡 {liveTracking ? 'LOCK' : 'TRACK'}
             </button>
           </div>
         </div>
 
-        {/* Dedicated Row if Mines on Field */}
-        {((mobileActiveSide === 'blue' && hasBlueSideMines) || (mobileActiveSide === 'red' && hasRedSideMines)) && (
-          <div className="flex items-center justify-between gap-2 mb-2 p-1.5 bg-[#fdfcfa] border-2 border-dashed border-amber-400 rounded-xl">
-            <span className="text-[9px] font-black uppercase text-amber-900 flex items-center gap-1">⚠️ MINES RECLAIM:</span>
-            {!((mobileActiveSide === 'blue' ? blueMinesRevealed : redMinesRevealed)) ? (
+        {/* Dynamic Mines clear options row if selected stroller has minefields nearby */}
+        {selectedSideHasMines && (
+          <div className="flex items-center justify-between gap-1.5 pb-2 mb-2 border-b border-black/10">
+            <span className="text-[8px] font-black uppercase text-amber-900 flex items-center gap-0.5">⚠️ SIDE MINES DETECTED:</span>
+            {!selectedSideMinesRevealed ? (
               <button 
                 type="button"
-                onClick={() => handleRevealMines(mobileActiveSide)}
-                className="px-3 py-1 bg-amber-200 hover:bg-amber-300 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 cursor-pointer flex items-center gap-1.5"
+                onClick={() => handleRevealMines(selectedBabySide)}
+                className="px-2 py-0.5 bg-amber-200 hover:bg-amber-300 border border-black rounded text-black font-black text-[8px] uppercase tracking-tight cursor-pointer"
               >
-                <span>👁️</span> REVEAL (100)
+                👁️ REVEAL (100)
               </button>
             ) : (
               <button 
                 type="button"
-                onClick={() => handleClearMines(mobileActiveSide)}
-                className="px-3 py-1 bg-rose-200 hover:bg-rose-300 border-2 border-black rounded-lg text-black font-black text-[9px] uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 cursor-pointer flex items-center gap-1.5"
+                onClick={() => handleClearMines(selectedBabySide)}
+                className="px-2 py-0.5 bg-rose-200 hover:bg-rose-300 border border-black rounded text-black font-black text-[8px] uppercase tracking-tight cursor-pointer"
               >
-                <span>🧹</span> CLEAR (150)
+                🧹 CLEAR (150)
               </button>
             )}
           </div>
         )}
 
-        {/* 2 Rows of 4 Buttons (Compact Touch Grid) */}
-        <div className={`grid grid-cols-4 gap-2 ${!canControl(mobileActiveSide) ? 'opacity-30 pointer-events-none grayscale' : ''}`}>
-          <button 
-            type="button"
-            onClick={() => setActiveModal({ side: mobileActiveSide, type: 'move' })}
-            className={`py-2 px-1 flex flex-col items-center justify-center border-2 border-black rounded-xl text-white font-black uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer text-[10px] tracking-tight ${
-              mobileActiveSide === 'blue' ? 'bg-[#3b82f6] shadow-[#1d4ed8_2px_2px_0px_0px]' : 'bg-[#ef4444] shadow-[#b91c1c_2px_2px_0px_0px]'
-            }`}
-          >
-            <span className="text-sm">💥</span>
-            <span>MOVE</span>
-          </button>
-          
-          <button 
-            type="button"
-            onClick={() => setActiveModal({ side: mobileActiveSide, type: 'grid' })}
-            className="py-2 px-1 flex flex-col items-center justify-center bg-blue-105 hover:bg-blue-110 border-2 border-black rounded-xl text-black font-black uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer text-[10px] tracking-tight"
-          >
-            <span className="text-sm">♟️</span>
-            <span>PUSH</span>
-          </button>
+        {/* Specialized Mobile actions grid (2 rows of 4 buttons) and Zoom */}
+        <div className="flex flex-col gap-2">
+          <div className={`grid grid-cols-4 gap-1.5 transition-all ${!canControl(selectedBabyId) ? 'opacity-30 pointer-events-none grayscale' : ''}`}>
+            <button 
+              type="button"
+              onClick={() => setActiveModal({ side: selectedBabyId, type: 'move' })}
+              className="py-1.5 px-0.5 flex flex-col items-center justify-center bg-[#3b82f6] border border-black rounded-lg text-white font-black uppercase shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] text-[9px] cursor-pointer"
+            >
+              <span className="text-xs">💥</span>
+              <span>MOVE</span>
+            </button>
+            
+            <button 
+              type="button"
+              onClick={() => setActiveModal({ side: selectedBabyId, type: 'grid' })}
+              className="py-1.5 px-0.5 flex flex-col items-center justify-center bg-blue-50 border border-black rounded-lg text-black font-black uppercase shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] text-[9px] cursor-pointer"
+            >
+              <span className="text-xs">♟️</span>
+              <span>PUSH</span>
+            </button>
 
-          <button 
-            type="button"
-            onClick={() => setActiveModal({ side: mobileActiveSide, type: 'teleport' })}
-            className="py-2 px-1 flex flex-col items-center justify-center bg-purple-200 hover:bg-purple-300 border-2 border-black rounded-xl text-black font-black uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer text-[10px] tracking-tight"
-          >
-            <span className="text-sm">🔮</span>
-            <span>TELE</span>
-          </button>
+            <button 
+              type="button"
+              onClick={() => handleTeleport(selectedBabyId)}
+              className="py-1.5 px-0.5 flex flex-col items-center justify-center bg-purple-100 border border-black rounded-lg text-black font-black uppercase shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] text-[9px] cursor-pointer"
+            >
+              <span className="text-xs">🔮</span>
+              <span>TELE</span>
+            </button>
 
-          <button 
-            type="button"
-            onClick={() => setActiveModal({ side: mobileActiveSide, type: 'wall' })}
-            className="py-2 px-1 flex flex-col items-center justify-center bg-slate-200 hover:bg-slate-300 border-2 border-black rounded-xl text-black font-black uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer text-[10px] tracking-tight"
-          >
-            <span className="text-sm">🚧</span>
-            <span>WALL</span>
-          </button>
+            <button 
+              type="button"
+              onClick={() => setActiveModal({ side: selectedBabyId, type: 'wall' })}
+              className="py-1.5 px-0.5 flex flex-col items-center justify-center bg-slate-100 border border-black rounded-lg text-black font-black uppercase shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] text-[9px] cursor-pointer"
+            >
+              <span className="text-xs">🚧</span>
+              <span>WALL</span>
+            </button>
 
-          <button 
-            type="button"
-            onClick={() => setActiveModal({ side: mobileActiveSide, type: 'mine' })}
-            className="py-2 px-1 flex flex-col items-center justify-center bg-orange-200 hover:bg-orange-300 border-2 border-black rounded-xl text-black font-black uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer text-[10px] tracking-tight"
-          >
-            <span className="text-sm">💣</span>
-            <span>MINE</span>
-          </button>
+            <button 
+              type="button"
+              onClick={() => setActiveModal({ side: selectedBabyId, type: 'mine' })}
+              className="py-1.5 px-0.5 flex flex-col items-center justify-center bg-orange-100 border border-black rounded-lg text-black font-black uppercase shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] text-[9px] cursor-pointer"
+            >
+              <span className="text-xs">💣</span>
+              <span>MINE</span>
+            </button>
 
-          <button 
-            type="button"
-            onClick={() => setActiveModal({ side: mobileActiveSide, type: 'jackpot' })}
-            className="py-2 px-1 flex flex-col items-center justify-center bg-yellow-250 hover:bg-yellow-300 border-2 border-black rounded-xl text-black font-black uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer text-[10px] tracking-tight"
-          >
-            <span className="text-sm">🎰</span>
-            <span>LUCK</span>
-          </button>
+            <button 
+              type="button"
+              onClick={() => handleJackpot(selectedBabyId)}
+              className="py-1.5 px-0.5 flex flex-col items-center justify-center bg-yellow-150 border border-black rounded-lg text-black font-black uppercase shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] text-[9px] cursor-pointer"
+            >
+              <span className="text-xs">🎰</span>
+              <span>LUCK</span>
+            </button>
 
-          <button 
-            type="button"
-            onClick={() => handleSprint(mobileActiveSide)}
-            className="py-2 px-1 flex flex-col items-center justify-center bg-cyan-250 hover:bg-cyan-300 border-2 border-black rounded-xl text-black font-black uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer text-[10px] tracking-tight"
-          >
-            <span className="text-sm">🏃</span>
-            <span>RUN</span>
-          </button>
+            <button 
+              type="button"
+              onClick={() => handleSprint(selectedBabyId)}
+              className="py-1.5 px-0.5 flex flex-col items-center justify-center bg-cyan-150 border border-black rounded-lg text-black font-black uppercase shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] text-[9px] cursor-pointer"
+            >
+              <span className="text-xs">🏃</span>
+              <span>RUN</span>
+            </button>
 
-          <button 
-            type="button"
-            onClick={() => setActiveModal({ side: mobileActiveSide, type: 'slingshot' })}
-            className="py-2 px-1 flex flex-col items-center justify-center bg-rose-200 hover:bg-rose-300 border-2 border-black rounded-xl text-black font-black uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] cursor-pointer animate-pulse text-[10px] tracking-tight"
-          >
-            <span className="text-sm">🏹</span>
-            <span>SLING</span>
-          </button>
+            <button 
+              type="button"
+              onClick={() => setActiveModal({ side: selectedBabyId, type: 'slingshot' })}
+              className="py-1.5 px-0.5 flex flex-col items-center justify-center bg-rose-150 border border-black rounded-lg text-black font-black uppercase shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] text-[9px] cursor-pointer animate-pulse"
+            >
+              <span className="text-xs">🏹</span>
+              <span>SLING</span>
+            </button>
+          </div>
+
+          {/* Quick Zoom adjustment row */}
+          <div className="flex items-center justify-center gap-4 bg-black/5 py-1 rounded-lg">
+            <span className="text-[8.5px] font-black uppercase tracking-tight opacity-65 font-sans">ADJUST MAGNIFICATION:</span>
+            <div className="flex items-center border border-black rounded bg-white overflow-hidden h-5.5">
+              <button type="button" onClick={() => handleZoom('in')} className="px-3 bg-gray-50 border-r border-black font-black text-xs select-none">+</button>
+              <button type="button" onClick={() => handleZoom('out')} className="px-3 bg-gray-50 font-black text-xs select-none">-</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -2810,6 +3624,16 @@ export default function App() {
                 <img src={user.photoURL || ""} alt={user.displayName || ""} className="w-8 h-8 rounded-lg border-2 border-black" referrerPolicy="no-referrer" />
                 <div className="flex flex-col">
                   <span className="text-[10px] text-black font-extrabold tracking-tight leading-none mb-0.5">{user.displayName}</span>
+                  
+                  {/* Sponsor Your Own Baby Button directly under user's name */}
+                  <button
+                    type="button"
+                    onClick={() => setIsSponsorModalOpen(true)}
+                    className="mt-1 mb-1 text-[7.5px] bg-gradient-to-r from-emerald-300 to-emerald-400 hover:opacity-95 text-black border border-black font-black uppercase tracking-tighter px-1.5 py-0.5 rounded cursor-pointer transition-all shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:shadow-none flex items-center justify-center gap-0.5"
+                  >
+                    👶 Sponsor Your Baby (500 T)
+                  </button>
+
                   <div className="flex items-center gap-1 mt-0.5">
                     <span className="text-[8px] bg-green-200 text-black border border-black font-black uppercase tracking-wider px-1 rounded-sm">{profile?.currentTokens || 0} Tokens</span>
                     <button 
@@ -3224,6 +4048,28 @@ export default function App() {
           );
         })}
 
+        {/* Dynamic Sponsored Baby Trails */}
+        {sponsoredBabies && sponsoredBabies.map((b) => {
+          if (!b.trail) return null;
+          return b.trail.map((coord: string, tIdx: number) => {
+            const [tx, ty] = coord.split(',').map(Number);
+            return (
+              <div 
+                key={`trail-${b.id}-${tIdx}`}
+                className="absolute opacity-40 animate-pulse"
+                style={{ 
+                  left: `${tx * 4}px`, 
+                  top: `${ty * 4}px`,
+                  width: '4px',
+                  height: '4px',
+                  backgroundColor: b.color,
+                  boxShadow: `0 0 6px ${b.color}`
+                }}
+              />
+            );
+          });
+        })}
+
         {/* Mines rendering */}
         {mines.map((coord, idx) => {
           const [mx, my] = coord.split(',').map(Number);
@@ -3283,32 +4129,92 @@ export default function App() {
         />
 
         {/* Blue figure */}
-        <img 
-          src="https://lh3.googleusercontent.com/d/1SNCMihirT-5iX9Fp_AZTclJTJ0P5kae4"
-          className="absolute w-8 h-8 pointer-events-none object-contain z-20"
+        <div 
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelectedBabyId('blue');
+            addLog("Switching control to Blue Baby");
+          }}
+          className="absolute w-8 h-8 cursor-pointer z-20 flex items-center justify-center hover:scale-110 active:scale-95 transition-all select-none"
           style={{ 
             left: `${bluePos.x * 4 - 14}px`, 
             top: `${bluePos.y * 4 - 14}px`,
             transform: `rotate(${blueRot}deg)`,
             transition: 'left 0.1s linear, top 0.1s linear, transform 0.1s ease-out'
           }}
-          referrerPolicy="no-referrer"
-          alt="Blue figure"
-        />
+          title="Blue Baby Stroller (Click to select)"
+        >
+          <img 
+            src="https://lh3.googleusercontent.com/d/1SNCMihirT-5iX9Fp_AZTclJTJ0P5kae4"
+            className="w-full h-full object-contain pointer-events-none"
+            referrerPolicy="no-referrer"
+            alt="Blue figure"
+          />
+        </div>
 
         {/* Red figure (Updated URL and slightly smaller) */}
-        <img 
-          src="https://lh3.googleusercontent.com/d/1MBQVettULlTDGfz3HDLUojv_4kj7dlkx"
-          className="absolute w-8 h-8 pointer-events-none object-contain z-20"
+        <div 
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelectedBabyId('red');
+            addLog("Switching control to Red Baby");
+          }}
+          className="absolute w-8 h-8 cursor-pointer z-20 flex items-center justify-center hover:scale-110 active:scale-95 transition-all select-none"
           style={{ 
             left: `${redPos.x * 4 - 14}px`, 
             top: `${redPos.y * 4 - 14}px`,
             transform: `rotate(${redRot}deg)`,
             transition: 'left 0.1s linear, top 0.1s linear, transform 0.1s ease-out'
           }}
-          referrerPolicy="no-referrer"
-          alt="Red figure"
-        />
+          title="Red Baby Stroller (Click to select)"
+        >
+          <img 
+            src="https://lh3.googleusercontent.com/d/1MBQVettULlTDGfz3HDLUojv_4kj7dlkx"
+            className="w-full h-full object-contain pointer-events-none"
+            referrerPolicy="no-referrer"
+            alt="Red figure"
+          />
+        </div>
+
+        {/* Dynamic Sponsored Stroller Figures */}
+        {sponsoredBabies && sponsoredBabies.map((b) => (
+          <div
+            key={`sponsored-baby-${b.id}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedBabyId(b.id);
+              addLog(`Switching control to Custom Baby: "${b.name}"`);
+            }}
+            className="absolute w-8 h-8 cursor-pointer z-20 flex items-center justify-center font-sans hover:scale-110 active:scale-95 transition-all select-none"
+            style={{
+              left: `${b.x * 4 - 14}px`,
+              top: `${b.y * 4 - 14}px`,
+              transform: `rotate(${b.rot || -90}deg)`,
+              transition: 'left 0.1s linear, top 0.1s linear, transform 0.1s ease-out'
+            }}
+            title={`${b.name} sponsored by ${b.ownerName} (Click to select)`}
+          >
+            {/* Pulsing colored energy ring */}
+            <div 
+              className="absolute inset-0 rounded-full border-2 animate-pulse opacity-85 pointer-events-none"
+              style={{ borderColor: b.color, boxShadow: `0 0 10px ${b.color}` }}
+            />
+            {/* Stroller visual baby robot avatar */}
+            <img
+              src={`https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(b.name)}`}
+              className="w-5 h-5 object-contain relative z-10 pointer-events-none"
+              referrerPolicy="no-referrer"
+              alt={b.name}
+            />
+            {/* Floating text name tag */}
+            <div 
+              className="absolute -top-4.5 left-1/2 -translate-x-1/2 px-1 py-0.2 text-[6px] font-black uppercase text-white border border-black rounded whitespace-nowrap shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] tracking-tighter pointer-events-none"
+              style={{ backgroundColor: b.color }}
+            >
+              👶 {b.name}
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Championship Winner Celebration Modal */}
