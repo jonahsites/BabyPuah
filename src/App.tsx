@@ -700,19 +700,26 @@ export default function App() {
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       setLiveTracking(false); // Cancel live tracking on wheel zoom
-      const zoomSpeed = 0.0015;
-      const delta = -e.deltaY * zoomSpeed;
-      const prevScale = transformRef.current.scale;
-      const newScale = Math.min(Math.max(0.15, prevScale + delta), 5);
 
       const rect = viewport.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
 
-      transformRef.current.x -= (mx - transformRef.current.x) * (newScale / prevScale - 1);
-      transformRef.current.y -= (my - transformRef.current.y) * (newScale / prevScale - 1);
-      
-      transformRef.current.scale = newScale;
+      // Handle pinch-to-zoom or Ctrl+scroll (usually zoom gesture on trackpads and mice)
+      if (e.ctrlKey) {
+        const zoomSpeed = 0.01;
+        const delta = -e.deltaY * zoomSpeed;
+        const prevScale = transformRef.current.scale;
+        const newScale = Math.min(Math.max(0.15, prevScale + delta), 5);
+
+        transformRef.current.x -= (mx - transformRef.current.x) * (newScale / prevScale - 1);
+        transformRef.current.y -= (my - transformRef.current.y) * (newScale / prevScale - 1);
+        transformRef.current.scale = newScale;
+      } else {
+        // Normal trackpad panning / mouse scrolling
+        transformRef.current.x -= e.deltaX;
+        transformRef.current.y -= e.deltaY;
+      }
       update();
     };
 
@@ -758,16 +765,35 @@ export default function App() {
       viewport.style.cursor = 'grab';
     };
 
-    // Touch event listeners for seamless mobile/trackpad drag experience
+    // Touch event listeners for seamless mobile/trackpad drag & pinch-to-zoom experience
     let isTouchDragging = false;
+    let isPinching = false;
     let touchStartPos = { x: 0, y: 0 };
     let touchStartScreenPos = { x: 0, y: 0 };
+    let initialTouchDist = 0;
+    let initialScale = 1;
+    let initialTouchMid = { x: 0, y: 0 };
+
+    const getTouchDist = (t1: Touch, t2: Touch) => {
+      const dx = t1.clientX - t2.clientX;
+      const dy = t1.clientY - t2.clientY;
+      return Math.hypot(dx, dy);
+    };
+
+    const getTouchMid = (t1: Touch, t2: Touch, r: DOMRect) => {
+      return {
+        x: (t1.clientX + t2.clientX) / 2 - r.left,
+        y: (t1.clientY + t2.clientY) / 2 - r.top
+      };
+    };
 
     const handleTouchStart = (e: TouchEvent) => {
+      if ((e.target as HTMLElement).closest('button, input, select, textarea, a') || isWallBuildingRef.current) return;
+      setLiveTracking(false);
+
       if (e.touches.length === 1) {
-        if ((e.target as HTMLElement).closest('button, input, select, textarea, a') || isWallBuildingRef.current) return;
-        setLiveTracking(false);
         isTouchDragging = true;
+        isPinching = false;
         touchStartPos = {
           x: e.touches[0].clientX - transformRef.current.x,
           y: e.touches[0].clientY - transformRef.current.y
@@ -777,15 +803,21 @@ export default function App() {
           y: e.touches[0].clientY
         };
         draggedDistanceRef.current = 0;
+      } else if (e.touches.length === 2) {
+        isTouchDragging = false;
+        isPinching = true;
+        initialTouchDist = getTouchDist(e.touches[0], e.touches[1]);
+        initialScale = transformRef.current.scale;
+        const r = viewport.getBoundingClientRect();
+        initialTouchMid = getTouchMid(e.touches[0], e.touches[1], r);
       }
     };
 
     const handleTouchMove = (e: TouchEvent) => {
-      if (!isTouchDragging) return;
-      if (e.touches.length === 1) {
-        // Stop mobile pull-to-refresh or general viewport scrolling
+      if ((e.target as HTMLElement).closest('button, input, select, textarea, a') || isWallBuildingRef.current) return;
+      
+      if (isTouchDragging && e.touches.length === 1) {
         e.preventDefault();
-        
         transformRef.current.x = e.touches[0].clientX - touchStartPos.x;
         transformRef.current.y = e.touches[0].clientY - touchStartPos.y;
         
@@ -794,15 +826,45 @@ export default function App() {
         draggedDistanceRef.current = Math.hypot(dx, dy);
         
         update();
+      } else if (isPinching && e.touches.length === 2) {
+        e.preventDefault();
+        const dist = getTouchDist(e.touches[0], e.touches[1]);
+        if (dist > 0 && initialTouchDist > 0) {
+          const factor = dist / initialTouchDist;
+          const prevScale = transformRef.current.scale;
+          const newScale = Math.min(Math.max(0.15, initialScale * factor), 5);
+
+          const r = viewport.getBoundingClientRect();
+          const currentMid = getTouchMid(e.touches[0], e.touches[1], r);
+
+          transformRef.current.x -= (currentMid.x - transformRef.current.x) * (newScale / prevScale - 1);
+          transformRef.current.y -= (currentMid.y - transformRef.current.y) * (newScale / prevScale - 1);
+          
+          transformRef.current.scale = newScale;
+          update();
+        }
       }
     };
 
-    const handleTouchEnd = () => {
-      isTouchDragging = false;
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length === 0) {
+        isTouchDragging = false;
+        isPinching = false;
+      } else if (e.touches.length === 1) {
+        isPinching = false;
+        isTouchDragging = true;
+        touchStartPos = {
+          x: e.touches[0].clientX - transformRef.current.x,
+          y: e.touches[0].clientY - transformRef.current.y
+        };
+        touchStartScreenPos = {
+          x: e.touches[0].clientX,
+          y: e.touches[0].clientY
+        };
+      }
     };
 
     const handleResize = () => {
-      // Respect user's current pan/zoom instead of forcing reset! Only update layout bounds if essential
       update();
     };
 
@@ -812,7 +874,6 @@ export default function App() {
     window.addEventListener("mouseup", handleMouseUp);
     viewport.addEventListener("dragstart", handleDragStart);
     
-    // Add touch listeners
     viewport.addEventListener("touchstart", handleTouchStart, { passive: false });
     window.addEventListener("touchmove", handleTouchMove, { passive: false });
     window.addEventListener("touchend", handleTouchEnd, { passive: false });
