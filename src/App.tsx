@@ -141,6 +141,8 @@ export default function App() {
   const transformRef = useRef({ scale: 1, x: 0, y: 0 });
   const isDragging = useRef(false);
   const startPos = useRef({ x: 0, y: 0 });
+  const draggedDistanceRef = useRef(0);
+  const startScreenPos = useRef({ x: 0, y: 0 });
 
   // Initial Positions
   const initialBlue = { x: 49, y: 245 };
@@ -385,13 +387,13 @@ export default function App() {
   const [sprintBlue, setSprintBlue] = useState(0); // timestamp until end
   const [sprintRed, setSprintRed] = useState(0); // timestamp until end
 
-  const [isWallBuilding, setIsWallBuilding] = useState<{ side: 'blue' | 'red', budget: number } | null>(null);
+  const [isWallBuilding, setIsWallBuilding] = useState<{ side: string, budget: number } | null>(null);
   const isWallBuildingRef = useRef<any>(null);
   useEffect(() => {
     isWallBuildingRef.current = isWallBuilding;
   }, [isWallBuilding]);
   const [jackpotResult, setJackpotResult] = useState<number | null>(null);
-  const [jackpotSpinning, setJackpotSpinning] = useState<{ side: 'blue' | 'red', rotation: number, isFinished: boolean, resultValue: number } | null>(null);
+  const [jackpotSpinning, setJackpotSpinning] = useState<{ side: string, rotation: number, isFinished: boolean, resultValue: number } | null>(null);
   const [isLogOpen, setIsLogOpen] = useState(true);
   
   // Trails - using string keys "x,y"
@@ -721,12 +723,21 @@ export default function App() {
     const handleMouseDown = (e: MouseEvent) => {
       if (e.button !== 0) return; // Only left mouse button trigger drag
       if ((e.target as HTMLElement).closest('button, input, select, textarea, a') || isWallBuildingRef.current) return;
+      
+      // Prevent browser default selection or scrolling behaviors on drag
+      e.preventDefault();
+      
       setLiveTracking(false); // Cancel live tracking on manual pan drag
       isDragging.current = true;
       startPos.current = {
         x: e.clientX - transformRef.current.x,
         y: e.clientY - transformRef.current.y
       };
+      startScreenPos.current = {
+        x: e.clientX,
+        y: e.clientY
+      };
+      draggedDistanceRef.current = 0;
       viewport.style.cursor = 'grabbing';
     };
 
@@ -734,6 +745,11 @@ export default function App() {
       if (!isDragging.current) return;
       transformRef.current.x = e.clientX - startPos.current.x;
       transformRef.current.y = e.clientY - startPos.current.y;
+      
+      const dx = e.clientX - startScreenPos.current.x;
+      const dy = e.clientY - startScreenPos.current.y;
+      draggedDistanceRef.current = Math.hypot(dx, dy);
+      
       update();
     };
 
@@ -745,6 +761,7 @@ export default function App() {
     // Touch event listeners for seamless mobile/trackpad drag experience
     let isTouchDragging = false;
     let touchStartPos = { x: 0, y: 0 };
+    let touchStartScreenPos = { x: 0, y: 0 };
 
     const handleTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 1) {
@@ -755,14 +772,27 @@ export default function App() {
           x: e.touches[0].clientX - transformRef.current.x,
           y: e.touches[0].clientY - transformRef.current.y
         };
+        touchStartScreenPos = {
+          x: e.touches[0].clientX,
+          y: e.touches[0].clientY
+        };
+        draggedDistanceRef.current = 0;
       }
     };
 
     const handleTouchMove = (e: TouchEvent) => {
       if (!isTouchDragging) return;
       if (e.touches.length === 1) {
+        // Stop mobile pull-to-refresh or general viewport scrolling
+        e.preventDefault();
+        
         transformRef.current.x = e.touches[0].clientX - touchStartPos.x;
         transformRef.current.y = e.touches[0].clientY - touchStartPos.y;
+        
+        const dx = e.touches[0].clientX - touchStartScreenPos.x;
+        const dy = e.touches[0].clientY - touchStartScreenPos.y;
+        draggedDistanceRef.current = Math.hypot(dx, dy);
+        
         update();
       }
     };
@@ -778,167 +808,33 @@ export default function App() {
 
     viewport.addEventListener("wheel", handleWheel, { passive: false });
     viewport.addEventListener("mousedown", handleMouseDown);
-    viewport.addEventListener("mousemove", handleMouseMove);
-    viewport.addEventListener("mouseup", handleMouseUp);
-    viewport.addEventListener("mouseleave", handleMouseUp);
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
     viewport.addEventListener("dragstart", handleDragStart);
     
     // Add touch listeners
-    viewport.addEventListener("touchstart", handleTouchStart, { passive: true });
-    viewport.addEventListener("touchmove", handleTouchMove, { passive: true });
-    viewport.addEventListener("touchend", handleTouchEnd, { passive: true });
+    viewport.addEventListener("touchstart", handleTouchStart, { passive: false });
+    window.addEventListener("touchmove", handleTouchMove, { passive: false });
+    window.addEventListener("touchend", handleTouchEnd, { passive: false });
     
     window.addEventListener("resize", handleResize);
 
     return () => {
       viewport.removeEventListener("wheel", handleWheel);
       viewport.removeEventListener("mousedown", handleMouseDown);
-      viewport.removeEventListener("mousemove", handleMouseMove);
-      viewport.removeEventListener("mouseup", handleMouseUp);
-      viewport.removeEventListener("mouseleave", handleMouseUp);
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
       viewport.removeEventListener("dragstart", handleDragStart);
       
       viewport.removeEventListener("touchstart", handleTouchStart);
-      viewport.removeEventListener("touchmove", handleTouchMove);
-      viewport.removeEventListener("touchend", handleTouchEnd);
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleTouchEnd);
       
       window.removeEventListener("resize", handleResize);
     };
   }, []);
 
-  // Keyboard controls
-  useEffect(() => {
-    const handleKeyDown = async (e: KeyboardEvent) => {
-      if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") {
-        return;
-      }
-      const key = e.key.toLowerCase();
-      const isWasd = ['w', 'a', 's', 'd'].includes(key);
-      const isArrows = ['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key);
 
-      if ((isWasd || isArrows) && userRole !== 'none') {
-        if (selectedBabyId === 'none') return;
-
-        let curX = 0;
-        let curY = 0;
-        let curRot = -90;
-        let curTrail: string[] = [];
-        let isLeft = true;
-        let babyName = "Baby";
-
-        let customBaby = sponsoredBabies.find(b => b.id === selectedBabyId);
-
-        if (selectedBabyId === 'blue') {
-          curX = bluePos.x;
-          curY = bluePos.y;
-          curRot = blueRot;
-          curTrail = blueTrail;
-          isLeft = true;
-          babyName = "Blue Baby";
-        } else if (selectedBabyId === 'red') {
-          curX = redPos.x;
-          curY = redPos.y;
-          curRot = redRot;
-          curTrail = redTrail;
-          isLeft = false;
-          babyName = "Red Baby";
-        } else if (customBaby) {
-          curX = customBaby.x;
-          curY = customBaby.y;
-          curRot = customBaby.rot || -90;
-          curTrail = customBaby.trail || [];
-          isLeft = customBaby.side === 'left';
-          babyName = customBaby.name;
-        } else {
-          return;
-        }
-
-        let nextX = curX;
-        let nextY = curY;
-        let nextRot = curRot;
-
-        if (key === 'w' || key === 'arrowup') {
-          if (curY > 0) { nextY -= 1; nextRot = -90; }
-        } else if (key === 's' || key === 'arrowdown') {
-          if (curY < heightSize - 1) { nextY += 1; nextRot = 95; }
-        } else if (key === 'a' || key === 'arrowleft') {
-          const leftBound = isLeft ? 0 : Math.floor(widthSize / 2);
-          if (curX > leftBound) { nextX -= 1; nextRot = 180; }
-        } else if (key === 'd' || key === 'arrowright') {
-          const rightBound = isLeft ? Math.floor(widthSize / 2) - 1 : widthSize - 1;
-          if (curX < rightBound) { nextX += 1; nextRot = 0; }
-        }
-
-        if (nextX !== curX || nextY !== curY) {
-          if (walls.includes(`${nextX},${nextY}`) || isObstacleVal(nextX, nextY)) return;
-          
-          if (mines.includes(`${nextX},${nextY}`)) {
-            setMineAlert(`🚨 BOOM! "${babyName}" hit a hidden mine! Sanitizing coordinates back to startup.`);
-            addLog(`💥 "${babyName}" hit a mine! Resetting coordinate count back to starting point.`);
-            
-            if (selectedBabyId === 'blue') {
-              setBluePos(initialBlue);
-              updateFirebase({ bluePos: initialBlue });
-            } else if (selectedBabyId === 'red') {
-              setRedPos(initialRed);
-              updateFirebase({ redPos: initialRed });
-            } else if (customBaby) {
-              const initX = customBaby.initialX || 49;
-              const initY = customBaby.initialY || 245;
-              const updated = sponsoredBabies.map(b => {
-                if (b.id === selectedBabyId) {
-                  return { ...b, x: initX, y: initY, rot: -90, trail: [] };
-                }
-                return b;
-              });
-              setSponsoredBabies(updated);
-              updateFirebase({ sponsoredBabies: updated });
-            }
-            return;
-          }
-
-          // Spend tokens (Admins free, else 1 token)
-          const sideKey = isLeft ? 'blue' : 'red';
-          const success = await spendTokens(sideKey, 1);
-          if (!success) return;
-
-          const newTrail = [...curTrail, `${curX},${curY}`];
-
-          if (selectedBabyId === 'blue') {
-            setBluePos({ x: nextX, y: nextY });
-            setBlueRot(nextRot);
-            setBlueTrail(newTrail);
-            updateFirebase({
-              bluePos: { x: nextX, y: nextY },
-              blueRot: nextRot,
-              blueTrail: newTrail
-            });
-          } else if (selectedBabyId === 'red') {
-            setRedPos({ x: nextX, y: nextY });
-            setRedRot(nextRot);
-            setRedTrail(newTrail);
-            updateFirebase({
-              redPos: { x: nextX, y: nextY },
-              redRot: nextRot,
-              redTrail: newTrail
-            });
-          } else if (customBaby) {
-            const updated = sponsoredBabies.map(b => {
-              if (b.id === selectedBabyId) {
-                return { ...b, x: nextX, y: nextY, rot: nextRot, trail: newTrail };
-              }
-              return b;
-            });
-            setSponsoredBabies(updated);
-            updateFirebase({ sponsoredBabies: updated });
-          }
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [widthSize, heightSize, bluePos, blueRot, blueTrail, redPos, redRot, redTrail, walls, mines, userRole, user, profile, selectedBabyId, sponsoredBabies]);
 
   // Center & Lock on player team's baby in real time
   const centerOnBaby = () => {
@@ -1113,7 +1009,7 @@ export default function App() {
           if (b.id === babyId) {
             return {
               ...b,
-              x: b.initialX || 49,
+              x: b.initialX || 4,
               y: b.initialY || 245,
               trail: [],
               rot: -90
@@ -1144,6 +1040,25 @@ export default function App() {
     setIsGreatResetModalOpen(false);
   };
 
+  const handleRemoveSponsoredBaby = async (babyId: string) => {
+    const babyObj = sponsoredBabies.find(b => b.id === babyId);
+    if (!babyObj) return;
+
+    if (user && (babyObj.ownerUid === user.uid || userRole === 'admin')) {
+      const updated = sponsoredBabies.filter(b => b.id !== babyId);
+      setSponsoredBabies(updated);
+      
+      if (selectedBabyId === babyId) {
+        setSelectedBabyId(babyObj.side === 'left' ? 'blue' : 'red');
+      }
+
+      await addLog(`🍼 SPONSOR BABY REMOVED: "${babyObj.name}" was retired by their sponsor.`);
+      await updateFirebase({ sponsoredBabies: updated });
+    } else {
+      await addLog("Permission denied: You do not own this sponsored baby!");
+    }
+  };
+
   const sponsorYourOwnBaby = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sponsorName.trim()) {
@@ -1159,14 +1074,9 @@ export default function App() {
     const babyId = "baby-" + Date.now();
     const isLeft = sponsorSide === 'left';
     
-    // Count existing sponsored babies on this side to stagger starting X coordinate so they stay purely on the side lanes with no overlap
-    const sideBabiesCount = sponsoredBabies.filter(b => b.side === sponsorSide).length;
-    // Each side has 100 wide grid lanes.
-    // Left side is 0-99. Blue is at 49. Let's make staggered babies spawn at 10, 22, 34, etc. (up to 85) so they don't overlap with Blue or each other.
-    // Right side is 100-199. Red is at 149. Let's make staggered babies spawn at 110, 122, 134, etc. (up to 185) so they don't overlap with Red or each other.
-    const launchX = isLeft 
-      ? Math.min(85, 10 + (sideBabiesCount * 12)) 
-      : Math.min(185, 110 + (sideBabiesCount * 12));
+    // Each custom sponsored baby gets a dedicated separate 8-column wide track lane.
+    // They spawn centered inside their isolated track lane (X: 4, Y: 245).
+    const launchX = 4;
     const launchY = 245;
 
     const newBaby = {
@@ -1187,7 +1097,7 @@ export default function App() {
     const updated = [...sponsoredBabies, newBaby];
     setSponsoredBabies(updated);
     await updateFirebase({ sponsoredBabies: updated });
-    await addLog(`🍼 NEW SPONSOR BABY DEPLOYED: "${newBaby.name}" with glowing color ${newBaby.color}!`);
+    await addLog(`🍼 NEW SPONSOR BABY DEPLOYED: "${newBaby.name}" with signature track color ${newBaby.color}!`);
     
     // Auto-select the newly sponsored baby!
     setSelectedBabyId(babyId);
@@ -1244,12 +1154,20 @@ export default function App() {
         if (direction === 'up' && nextPos.y > 0) { nextPos.y -= 1; nextRot = -90; }
         if (direction === 'down' && nextPos.y < heightSize - 1) { nextPos.y += 1; nextRot = 90; }
         if (direction === 'left') {
-           if (isLeftTarget && nextPos.x > 0) { nextPos.x -= 1; nextRot = 180; }
-           else if (!isLeftTarget && nextPos.x > widthSize / 2) { nextPos.x -= 1; nextRot = 180; }
+           if (customTargetBaby) {
+             if (nextPos.x > 0) { nextPos.x -= 1; nextRot = -180; }
+           } else {
+             if (isLeftTarget && nextPos.x > 0) { nextPos.x -= 1; nextRot = 180; }
+             else if (!isLeftTarget && nextPos.x > widthSize / 2) { nextPos.x -= 1; nextRot = 180; }
+           }
         }
         if (direction === 'right') {
-           if (isLeftTarget && nextPos.x < (widthSize / 2) - 1) { nextPos.x += 1; nextRot = 0; }
-           else if (!isLeftTarget && nextPos.x < widthSize - 1) { nextPos.x += 1; nextRot = 0; }
+           if (customTargetBaby) {
+             if (nextPos.x < 7) { nextPos.x += 1; nextRot = 0; }
+           } else {
+             if (isLeftTarget && nextPos.x < (widthSize / 2) - 1) { nextPos.x += 1; nextRot = 0; }
+             else if (!isLeftTarget && nextPos.x < widthSize - 1) { nextPos.x += 1; nextRot = 0; }
+           }
         }
         
         if (nextPos.x !== temp.x || nextPos.y !== temp.y) {
@@ -1380,13 +1298,19 @@ export default function App() {
 
     for (const pt of linePoints) {
       let inBound = false;
-      if (isLeft) {
-        if (pt.x >= 0 && pt.x < widthSize / 2 && pt.y >= 0 && pt.y < heightSize) {
+      if (customBaby) {
+        if (pt.x >= 0 && pt.x <= 7 && pt.y >= 0 && pt.y < heightSize) {
           inBound = true;
         }
       } else {
-        if (pt.x >= widthSize / 2 && pt.x < widthSize && pt.y >= 0 && pt.y < heightSize) {
-          inBound = true;
+        if (isLeft) {
+          if (pt.x >= 0 && pt.x < widthSize / 2 && pt.y >= 0 && pt.y < heightSize) {
+            inBound = true;
+          }
+        } else {
+          if (pt.x >= widthSize / 2 && pt.x < widthSize && pt.y >= 0 && pt.y < heightSize) {
+            inBound = true;
+          }
         }
       }
 
@@ -1561,8 +1485,16 @@ export default function App() {
     nx = Math.max(0, Math.min(widthSize - 1, nx));
     ny = Math.max(0, Math.min(heightSize - 1, ny));
     // Side lock
-    if (isLeft) nx = Math.min((widthSize / 2) - 1, nx);
-    else nx = Math.max(widthSize / 2, nx);
+    if (customBaby) {
+      if (customBaby.side === 'left') {
+        nx = Math.max(0, Math.min(30, nx));
+      } else {
+        nx = Math.max(170, Math.min(widthSize - 1, nx));
+      }
+    } else {
+      if (isLeft) nx = Math.min((widthSize / 2) - 1, nx);
+      else nx = Math.max(widthSize / 2, nx);
+    }
 
     const update: any = {};
 
@@ -1736,6 +1668,12 @@ export default function App() {
   };
 
   const handleGridClick = async (e: React.MouseEvent) => {
+    // If we've dragged more than 5 pixels, ignore this click as it was likely a pan update
+    if (draggedDistanceRef.current > 5) {
+      draggedDistanceRef.current = 0;
+      return;
+    }
+
     const rect = gridRef.current?.getBoundingClientRect();
     if (!rect) return;
     
@@ -1788,10 +1726,11 @@ export default function App() {
       }
 
       const side = isWallBuilding.side;
+      const customBaby = sponsoredBabies.find(b => b.id === side);
 
       // Determine side-specific bounds for row blockage check
-      const minX = side === 'blue' ? 0 : Math.floor(widthSize / 2);
-      const maxX = side === 'blue' ? Math.floor(widthSize / 2) - 1 : widthSize - 1;
+      const minX = customBaby ? 0 : (side === 'blue' ? 0 : Math.floor(widthSize / 2));
+      const maxX = customBaby ? 7 : (side === 'blue' ? Math.floor(widthSize / 2) - 1 : widthSize - 1);
       const sideWidth = maxX - minX + 1;
 
       // Count blocked cells on row y including the new proposed cell
@@ -1823,7 +1762,8 @@ export default function App() {
       const newBudget = isWallBuilding.budget - costPerPixel;
 
       setWalls(newWalls);
-      addLog(`${side === 'blue' ? 'Blue' : 'Red'} built a wall pixel at ${x},${y}`);
+      const babyName = customBaby ? `👶 ${customBaby.name}` : (side === 'blue' ? 'Blue' : 'Red');
+      addLog(`${babyName} built a wall pixel at ${x},${y}`);
       await updateFirebase({ 
           walls: newWalls
       });
@@ -2062,102 +2002,84 @@ export default function App() {
         </div>
       )}
 
-      {/* Dynamic Stroller / Baby Faction Command Hub */}
-      {userRole !== 'none' && (
-        <div className="fixed top-18 md:top-6 left-1/2 -translate-x-1/2 z-[40] flex items-center gap-1.5 sm:gap-2.5 bg-[#fdfaf2] border-3 border-black px-3 py-2 sm:px-5 sm:py-3 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] max-w-[95vw] overflow-x-auto whitespace-nowrap text-xs font-bold font-mono">
-          <span className="text-[10px] sm:text-xs font-black uppercase text-black select-none">🍼 HUB:</span>
-          {/* Blue Baby control */}
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedBabyId('blue');
-              addLog("Switching control to Blue Baby");
-            }}
-            className={`px-2.5 py-1 rounded-lg border border-black cursor-pointer uppercase font-black text-[8.5px] sm:text-[10px] tracking-tight transition-all ${
-              selectedBabyId === 'blue' 
-                ? 'bg-blue-600 text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' 
-                : 'bg-white text-blue-600 hover:bg-blue-50'
-            }`}
-          >
-            💙 Blue Baby
-          </button>
-          
-          {/* Red Baby control */}
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedBabyId('red');
-              addLog("Switching control to Red Baby");
-            }}
-            className={`px-2.5 py-1 rounded-lg border border-black cursor-pointer uppercase font-black text-[8.5px] sm:text-[10px] tracking-tight transition-all ${
-              selectedBabyId === 'red' 
-                ? 'bg-red-600 text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' 
-                : 'bg-white text-red-600 hover:bg-red-50'
-            }`}
-          >
-            ❤️ Red Baby
-          </button>
-
-          {/* Sponsored Babies List trigger */}
-          <button
-            type="button"
-            onClick={() => setIsSponsorListModalOpen(true)}
-            className="px-2.5 py-1 bg-orange-100 text-black rounded-lg border border-black cursor-pointer uppercase font-black text-[8.5px] sm:text-[10px] tracking-wider hover:opacity-90 active:translate-y-0.5 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] active:shadow-none"
-          >
-            👶 Sponsored Babies
-          </button>
-          
-          <button 
-            onClick={() => setActiveModal({ side: 'blue', type: 'landmark' })}
-            className="px-2.5 py-1 bg-blue-100 text-black rounded-lg border border-black cursor-pointer uppercase font-black text-[8.5px] sm:text-[10px] tracking-wider hover:opacity-90 active:translate-y-0.5 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] active:shadow-none"
-          >
-            🏰 MARK B
-          </button>
-          <button 
-            onClick={() => setActiveModal({ side: 'red', type: 'landmark' })}
-            className="px-2.5 py-1 bg-red-100 text-black rounded-lg border border-black cursor-pointer uppercase font-black text-[8.5px] sm:text-[10px] tracking-wider hover:opacity-90 active:translate-y-0.5 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] active:shadow-none"
-          >
-            🏰 MARK R
-          </button>
-
-        </div>
-      )}
-
-      {/* SPONSORED BABIES LIST MODAL */}
+      {/* SPONSORED BABIES LIST SIDE CARD */}
       {isSponsorListModalOpen && (
-        <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div className="fixed left-4 md:left-6 top-32 md:top-24 z-[100] p-0 w-72 max-w-[calc(100vw-32px)]">
           <motion.div 
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="max-w-md w-full bg-[#fdfaf2] border-4 border-black rounded-3xl p-6 text-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden"
+            initial={{ x: -40, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            className="w-full bg-[#fdfaf2] border-4 border-black rounded-3xl p-5 text-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden"
           >
-            <div className="text-center mb-4">
-              <h3 className="font-black text-2xl uppercase tracking-tight text-black">Sponsored Babies</h3>
+            <div className="flex justify-between items-center border-b-3 border-black pb-2 mb-3">
+              <h3 className="font-black text-sm uppercase tracking-wider flex items-center gap-1.5 text-black font-mono">
+                <span>🍼</span> Sponsored Babies
+              </h3>
+              <button 
+                type="button"
+                onClick={() => setIsSponsorListModalOpen(false)}
+                className="w-6 h-6 flex items-center justify-center border border-black bg-rose-500 hover:bg-rose-600 rounded text-white font-mono text-[9px] font-black cursor-pointer shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.2"
+              >✕</button>
             </div>
-            <div className="space-y-2 max-h-[300px] overflow-y-auto">
-              {sponsoredBabies && sponsoredBabies.map(b => (
-                <button
-                  key={b.id}
-                  onClick={() => {
-                    setSelectedBabyId(b.id);
-                    setIsSponsorListModalOpen(false);
-                    addLog(`Unit switched to: ${b.name}`);
-                  }}
-                  className="w-full flex items-center justify-between p-3 border-2 border-black rounded-xl bg-white hover:bg-orange-50 transition-all font-black text-xs uppercase"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">👶</span>
-                    {b.name.toUpperCase()}
+
+            <div className="space-y-1.5 max-h-[250px] overflow-y-auto pr-1">
+              {sponsoredBabies && sponsoredBabies.length === 0 ? (
+                <div className="text-[10px] text-gray-500 italic py-6 text-center uppercase font-bold font-sans">
+                  No sponsored babies active
+                </div>
+              ) : (
+                sponsoredBabies.map(b => (
+                  <div
+                    key={b.id}
+                    onClick={() => {
+                      setSelectedBabyId(b.id);
+                      setIsSponsorListModalOpen(false);
+                      addLog(`Unit switched to: ${b.name}`);
+                    }}
+                    className={`w-full flex flex-col p-2 border-2 border-black rounded-xl transition-all text-left cursor-pointer font-black text-xs uppercase ${
+                      selectedBabyId === b.id 
+                        ? 'bg-orange-100 text-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] border-orange-500' 
+                        : 'bg-white text-black hover:bg-orange-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex items-center gap-1 font-sans font-black text-[10px] uppercase truncate">
+                        <span>👶</span>
+                        <span className="truncate">{b.name}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 font-mono text-[7px] opacity-70">
+                        <span>({b.x}, {b.y})</span>
+                        {user && (b.ownerUid === user.uid || userRole === 'admin') && (
+                          <button
+                            type="button"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              await handleRemoveSponsoredBaby(b.id);
+                            }}
+                            className="px-1.5 py-0.5 bg-rose-500 hover:bg-rose-600 border border-black rounded text-white font-sans font-black text-[7.5px] uppercase tracking-wider cursor-pointer shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 transition-transform"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between mt-1 text-[7px] font-mono opacity-60">
+                      <span>Side: {b.side}</span>
+                      <span style={{ color: b.color }} className="font-black">● ACTIVE</span>
+                    </div>
                   </div>
-                  <span className="text-[10px] font-mono opacity-60">({b.side === 'left' ? 'LEFT' : 'RIGHT'})</span>
-                </button>
-              ))}
+                ))
+              )}
             </div>
+
             <button
-              onClick={() => setIsSponsorListModalOpen(false)}
-              className="mt-6 w-full py-3 bg-black text-white rounded-xl font-black uppercase text-xs"
+              type="button"
+              onClick={() => {
+                setIsSponsorListModalOpen(false);
+                setIsSponsorCreateModalOpen(true);
+              }}
+              className="mt-4 w-full py-2 bg-yellow-300 hover:bg-yellow-400 text-black rounded-xl border-2 border-black font-black uppercase text-[9px] tracking-wider transition-all hover:-translate-y-0.5 active:translate-y-0.5 cursor-pointer shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] text-center"
             >
-              Close
+              ➕ Sponsor Your Own (500 T)
             </button>
           </motion.div>
         </div>
@@ -3018,11 +2940,26 @@ export default function App() {
             className="bg-[#fffef4] border-4 border-black p-6 rounded-3xl max-w-sm w-full shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] text-center relative overflow-hidden"
           >
             {/* Top decorative banner */}
-            <div className={`text-[10px] font-black uppercase inline-block px-3 py-1 border-2 border-black rounded-full mb-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-black ${
-              jackpotSpinning.side === 'blue' ? 'bg-blue-200' : 'bg-red-200'
-            }`}>
-              🎰 {jackpotSpinning.side === 'blue' ? 'Blue Team' : 'Red Team'} jackpot
-            </div>
+            {(() => {
+              const customBaby = sponsoredBabies.find(b => b.id === jackpotSpinning.side);
+              if (customBaby) {
+                return (
+                  <div 
+                    className="text-[10px] font-black uppercase inline-block px-3 py-1 border-2 border-black rounded-full mb-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-white"
+                    style={{ backgroundColor: customBaby.color }}
+                  >
+                    🎰 {customBaby.name} Jackpot
+                  </div>
+                );
+              }
+              return (
+                <div className={`text-[10px] font-black uppercase inline-block px-3 py-1 border-2 border-black rounded-full mb-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-black ${
+                  jackpotSpinning.side === 'blue' ? 'bg-blue-200' : 'bg-red-200'
+                }`}>
+                  🎰 {jackpotSpinning.side === 'blue' ? 'Blue Team' : 'Red Team'} jackpot
+                </div>
+              );
+            })()}
 
             <h3 className="font-sans font-black text-2xl text-black uppercase tracking-tight mb-6">
               {jackpotSpinning.isFinished ? "🎉 SPIN COMPLETE! 🎉" : "🌀 SPINNING WHEEL... 🌀"}
@@ -3104,7 +3041,8 @@ export default function App() {
                   <button
                     onClick={() => {
                       const { side, resultValue } = jackpotSpinning;
-                      const rot = side === 'blue' ? blueRot : redRot;
+                      const customBaby = sponsoredBabies.find(b => b.id === side);
+                      const rot = customBaby ? (customBaby.rot || -90) : (side === 'blue' ? blueRot : redRot);
                       let dir = 'right';
                       if (rot === -90) dir = 'up';
                       if (rot === 90) dir = 'down';
@@ -3112,7 +3050,8 @@ export default function App() {
                       if (rot === 0) dir = 'right';
                       
                       executeBatchMove(side, side, 'move', resultValue, dir);
-                      addLog(`${side === 'blue' ? 'Blue' : 'Red'} executed their jackpot of ${resultValue} steps!`);
+                      const babyName = customBaby ? `👶 ${customBaby.name}` : (side === 'blue' ? 'Blue' : 'Red');
+                      addLog(`${babyName} executed their jackpot of ${resultValue} steps!`);
                       setJackpotSpinning(null);
                     }}
                     className="px-6 py-2 rounded-xl bg-yellow-300 hover:bg-yellow-400 border-2 border-black font-black text-xs uppercase tracking-wider text-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer"
@@ -3191,7 +3130,66 @@ export default function App() {
       {/* FIXED BOTTOM HUD (DESKTOP) */}
       <div className="hidden md:flex fixed bottom-0 left-0 w-full h-24 bg-[#fcfaf4] border-t-4 border-black items-center justify-between px-6 z-50 shadow-[0_-5px_0px_0px_rgba(0,0,0,1)] text-black">
         
+        {/* Left Column: Faction Command Hub */}
+        {userRole !== 'none' && (
+          <div className="flex items-center gap-2 bg-[#fdfaf2] border-2 border-black px-4 py-2 rounded-xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] select-none font-mono">
+            <span className="text-[10px] sm:text-xs font-black uppercase text-black select-none">🍼 HUB:</span>
+            
+            {/* Blue Baby control */}
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedBabyId('blue');
+                addLog("Switching control to Blue Baby");
+              }}
+              className={`px-2.5 py-1 rounded-lg border border-black cursor-pointer uppercase font-black text-[8.5px] sm:text-[10px] tracking-tight transition-all ${
+                selectedBabyId === 'blue' 
+                  ? 'bg-blue-600 text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' 
+                  : 'bg-white text-blue-600 hover:bg-blue-50'
+              }`}
+            >
+              💙 Blue Baby
+            </button>
+            
+            {/* Red Baby control */}
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedBabyId('red');
+                addLog("Switching control to Red Baby");
+              }}
+              className={`px-2.5 py-1 rounded-lg border border-black cursor-pointer uppercase font-black text-[8.5px] sm:text-[10px] tracking-tight transition-all ${
+                selectedBabyId === 'red' 
+                  ? 'bg-red-600 text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' 
+                  : 'bg-white text-red-600 hover:bg-red-50'
+              }`}
+            >
+              ❤️ Red Baby
+            </button>
 
+            {/* Sponsored Babies List trigger */}
+            <button
+              type="button"
+              onClick={() => setIsSponsorListModalOpen(true)}
+              className="px-2.5 py-1 bg-orange-100 text-black rounded-lg border border-black cursor-pointer uppercase font-black text-[8.5px] sm:text-[10px] tracking-wider hover:opacity-90 active:translate-y-0.5 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] active:shadow-none"
+            >
+              👶 Sponsored Babies
+            </button>
+            
+            <button 
+              onClick={() => setActiveModal({ side: 'blue', type: 'landmark' })}
+              className="px-2.5 py-1 bg-blue-105 border border-black rounded-lg text-black font-black text-[8.5px] sm:text-[10px] tracking-wider hover:opacity-90 active:translate-y-0.5 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] active:shadow-none cursor-pointer"
+            >
+              🏰 MARK B
+            </button>
+            <button 
+              onClick={() => setActiveModal({ side: 'red', type: 'landmark' })}
+              className="px-2.5 py-1 bg-red-105 border border-black rounded-lg text-black font-black text-[8.5px] sm:text-[10px] tracking-wider hover:opacity-90 active:translate-y-0.5 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] active:shadow-none cursor-pointer"
+            >
+              🏰 MARK R
+            </button>
+          </div>
+        )}
 
         {/* Middle Column: Unified 8 Abilities Deck targeting the currently selected unit */}
         <div className={`flex items-center gap-1.5 transition-all ${!canControl(selectedBabyId) ? 'opacity-30 pointer-events-none grayscale' : ''}`}>
@@ -3619,14 +3617,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* Movement Guides (Desktop only) */}
-      <div className="hidden md:flex fixed top-8 left-8 flex-col gap-3 z-50">
-        <div className="flex flex-col gap-2 text-black text-[10px] font-mono bg-yellow-200 border-3 border-black p-4 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] font-bold">
-          <p className="uppercase font-black text-xs border-b border-black pb-1.5 mb-1 tracking-tight">🎮 CONTROLS</p>
-          <p><span className="text-blue-600 font-extrabold">BLUE TEAM:</span> W, A, S, D Keyboards</p>
-          <p><span className="text-red-600 font-extrabold">RED TEAM:</span> ARROW Keys</p>
-        </div>
-      </div>
+
 
       {/* Charity Counter (Desktop only) */}
       <div className="hidden md:flex fixed top-8 right-8 z-50 flex-col items-end gap-3">
@@ -4049,27 +4040,7 @@ export default function App() {
           );
         })}
 
-        {/* Dynamic Sponsored Baby Trails */}
-        {sponsoredBabies && sponsoredBabies.map((b) => {
-          if (!b.trail) return null;
-          return b.trail.map((coord: string, tIdx: number) => {
-            const [tx, ty] = coord.split(',').map(Number);
-            return (
-              <div 
-                key={`trail-${b.id}-${tIdx}`}
-                className="absolute opacity-40 animate-pulse"
-                style={{ 
-                  left: `${tx * 4}px`, 
-                  top: `${ty * 4}px`,
-                  width: '4px',
-                  height: '4px',
-                  backgroundColor: b.color,
-                  boxShadow: `0 0 6px ${b.color}`
-                }}
-              />
-            );
-          });
-        })}
+
 
         {/* Mines rendering */}
         {mines.map((coord, idx) => {
@@ -4177,45 +4148,120 @@ export default function App() {
           />
         </div>
 
-        {/* Dynamic Sponsored Stroller Figures */}
-        {sponsoredBabies && sponsoredBabies.map((b) => (
-          <div
-            key={`sponsored-baby-${b.id}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              setSelectedBabyId(b.id);
-              addLog(`Switching control to Custom Baby: "${b.name}"`);
-            }}
-            className="absolute w-8 h-8 cursor-pointer z-20 flex items-center justify-center font-sans hover:scale-110 active:scale-95 transition-all select-none"
-            style={{
-              left: `${b.x * 4 - 14}px`,
-              top: `${b.y * 4 - 14}px`,
-              transform: `rotate(${b.rot || -90}deg)`,
-              transition: 'left 0.1s linear, top 0.1s linear, transform 0.1s ease-out'
-            }}
-            title={`${b.name} sponsored by ${b.ownerName} (Click to select)`}
-          >
-            {/* Pulsing colored energy ring */}
-            <div 
-              className="absolute inset-0 rounded-full border-2 animate-pulse opacity-85 pointer-events-none"
-              style={{ borderColor: b.color, boxShadow: `0 0 10px ${b.color}` }}
-            />
-            {/* Stroller visual baby robot avatar */}
-            <img
-              src={`https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(b.name)}`}
-              className="w-5 h-5 object-contain relative z-10 pointer-events-none"
-              referrerPolicy="no-referrer"
-              alt={b.name}
-            />
-            {/* Floating text name tag */}
-            <div 
-              className="absolute -top-4.5 left-1/2 -translate-x-1/2 px-1 py-0.2 text-[6px] font-black uppercase text-white border border-black rounded whitespace-nowrap shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] tracking-tighter pointer-events-none"
-              style={{ backgroundColor: b.color }}
+        {/* Render separate grid tracks for each sponsored baby */}
+        {sponsoredBabies && sponsoredBabies.map((b, bIdx) => {
+          const isLeft = b.side === 'left';
+          // Find the index among babies on the same side
+          const sameSideBabies = sponsoredBabies.filter(x => x.side === b.side);
+          const sideIndex = sameSideBabies.findIndex(x => x.id === b.id);
+          
+          // Calculate track left position: 8 col * 4px = 32px track width
+          const trackWidth = 32; 
+          const trackGap = 16;
+          const leftOffset = isLeft 
+            ? -((sideIndex + 1) * trackWidth + (sideIndex + 1) * trackGap)
+            : (widthSize * 4) + (sideIndex * trackWidth + (sideIndex + 1) * trackGap);
+
+          const isSelected = selectedBabyId === b.id;
+
+          return (
+            <div
+              key={`track-container-${b.id}`}
+              className="absolute top-0 h-full border-4 rounded-3xl shadow-[4px_4px_0px_0px_#000] cursor-default z-[5] overflow-visible transition-all"
+              style={{
+                left: `${leftOffset}px`,
+                width: `${trackWidth}px`,
+                backgroundColor: '#ffffff',
+                borderColor: b.color,
+                boxShadow: isSelected ? `0 0 16px ${b.color}, 4px 4px 0px 0px #000` : `4px 4px 0px 0px #000`,
+                backgroundImage: `linear-gradient(to right, rgba(0,0,0,0.06) 1px, transparent 1px), linear-gradient(to bottom, rgba(0,0,0,0.06) 1px, transparent 1px), linear-gradient(to bottom, ${b.color}0a, ${b.color}15)`,
+                backgroundSize: '4px 4px, 4px 4px, 100% 100%'
+              }}
             >
-              👶 {b.name}
+              {/* Checkered Goal / Finish Line */}
+              <div 
+                className="absolute left-0 w-full h-[16px] border-b-4 border-black z-10 flex items-center justify-center pointer-events-none overflow-hidden"
+                style={{
+                  top: '16px',
+                  backgroundColor: '#000',
+                  backgroundImage: 'conic-gradient(#fff 0.25turn, #000 0.25turn 0.5turn, #fff 0.5turn 0.75turn, #000 0.75turn)',
+                  backgroundSize: '8px 8px'
+                }}
+              >
+                <span className="text-[5px] font-black text-yellow-300 bg-black/85 px-0.5 rounded leading-none whitespace-nowrap">GOAL</span>
+              </div>
+
+              {/* Start/Spawn Area base visual representation */}
+              <div 
+                className="absolute border-2 rounded-lg flex flex-col items-center justify-center pointer-events-none"
+                style={{
+                  left: '2.5px',
+                  top: `${(245 - 10) * 4}px`,
+                  width: '24px',
+                  height: `${14 * 4}px`,
+                  borderColor: b.color,
+                  backgroundColor: `${b.color}10`
+                }}
+              >
+                <span className="font-sans font-black text-[5px] uppercase tracking-tighter" style={{ color: b.color }}>SPAWN</span>
+              </div>
+
+              {/* Trail marks for this specific baby */}
+              {b.trail && b.trail.map((coord: string, tIdx: number) => {
+                const [tx, ty] = coord.split(',').map(Number);
+                return (
+                  <div 
+                    key={`track-trail-${b.id}-${tIdx}`}
+                    className="absolute opacity-50 animate-pulse"
+                    style={{ 
+                      left: `${tx * 4}px`, 
+                      top: `${ty * 4}px`,
+                      width: '4px',
+                      height: '4px',
+                      backgroundColor: b.color,
+                      boxShadow: `0 0 6px ${b.color}`
+                    }}
+                  />
+                );
+              })}
+
+              {/* Baby Figure Stroller */}
+              <div
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedBabyId(b.id);
+                  addLog(`Switching control to Custom Baby: "${b.name}"`);
+                }}
+                className="absolute w-8 h-8 cursor-pointer z-20 flex items-center justify-center font-sans hover:scale-110 active:scale-95 transition-all select-none"
+                style={{
+                  left: `${b.x * 4 - 14}px`,
+                  top: `${b.y * 4 - 14}px`,
+                  transform: `rotate(${b.rot || -90}deg)`,
+                  transition: 'left 0.1s linear, top 0.1s linear, transform 0.1s ease-out'
+                }}
+                title={`${b.name} (Click to select)`}
+              >
+                <div 
+                  className="absolute inset-0 rounded-full border-2 animate-pulse opacity-85 pointer-events-none"
+                  style={{ borderColor: b.color, boxShadow: `0 0 10px ${b.color}` }}
+                />
+                <img
+                  src={`https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(b.name)}`}
+                  className="w-5 h-5 object-contain relative z-10 pointer-events-none"
+                  referrerPolicy="no-referrer"
+                  alt={b.name}
+                />
+                {/* Visual Label name tag */}
+                <div 
+                  className="absolute -top-4.5 left-1/2 -translate-x-1/2 px-1 py-0.2 text-[6px] font-black uppercase text-white border border-black rounded whitespace-nowrap shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] tracking-tighter"
+                  style={{ backgroundColor: b.color }}
+                >
+                  👶 {b.name}
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Championship Winner Celebration Modal */}
