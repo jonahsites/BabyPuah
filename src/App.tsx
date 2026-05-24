@@ -334,7 +334,8 @@ export default function App() {
   // Custom Sponsorship states
   const [sponsoredBabies, setSponsoredBabies] = useState<any[]>([]);
   const [selectedBabyId, setSelectedBabyId] = useState<string>('none');
-  const [isSponsorModalOpen, setIsSponsorModalOpen] = useState(false);
+  const [isSponsorCreateModalOpen, setIsSponsorCreateModalOpen] = useState(false);
+  const [isSponsorListModalOpen, setIsSponsorListModalOpen] = useState(false);
   const [sponsorName, setSponsorName] = useState('');
   const [sponsorColor, setSponsorColor] = useState('#22c55e'); // Green default
   const [sponsorSide, setSponsorSide] = useState<'left' | 'right'>('left');
@@ -600,6 +601,13 @@ export default function App() {
 
   const lastSeenResetIdRef = useRef<string | null>(null);
 
+  // Sync Great Reset event on mount without triggering it
+  useEffect(() => {
+    if (greatResetEvent?.id) {
+      lastSeenResetIdRef.current = greatResetEvent.id;
+    }
+  }, []); // Only on mount
+
   // Sync selectedBabyId when user role updates initially
   useEffect(() => {
     if (userRole === 'blue') {
@@ -617,11 +625,14 @@ export default function App() {
   useEffect(() => {
     if (greatResetEvent && greatResetEvent.id && greatResetEvent.id !== lastSeenResetIdRef.current) {
       lastSeenResetIdRef.current = greatResetEvent.id;
-      setShowEpicResetAnimation(true);
-      const timer = setTimeout(() => {
-        setShowEpicResetAnimation(false);
-      }, 7000);
-      return () => clearTimeout(timer);
+      // Only show if the event is very recent (less than 5 seconds old)
+      if (Date.now() - greatResetEvent.timestamp < 5000) {
+        setShowEpicResetAnimation(true);
+        const timer = setTimeout(() => {
+          setShowEpicResetAnimation(false);
+        }, 7000);
+        return () => clearTimeout(timer);
+      }
     }
   }, [greatResetEvent]);
 
@@ -1183,7 +1194,7 @@ export default function App() {
 
     // Reset fields & close
     setSponsorName('');
-    setIsSponsorModalOpen(false);
+    setIsSponsorCreateModalOpen(false);
   };
 
   const executeBatchMove = async (sideId: string, targetSideId: string, type: 'move' | 'grid', steps: number, direction: string) => {
@@ -2087,41 +2098,73 @@ export default function App() {
             ❤️ Red Baby
           </button>
 
-          {/* Dynamic babies lists */}
-          {sponsoredBabies && sponsoredBabies.map((b) => (
-            <button
-              key={`hub-select-${b.id}`}
-              type="button"
-              onClick={() => {
-                setSelectedBabyId(b.id);
-                addLog(`Switching control to Custom Baby: "${b.name}"`);
-              }}
-              className="px-2.5 py-1 rounded-lg border border-black cursor-pointer uppercase font-black text-[8.5px] sm:text-[10px] tracking-tight transition-all flex items-center gap-1"
-              style={{
-                backgroundColor: selectedBabyId === b.id ? b.color : '#fff',
-                color: selectedBabyId === b.id ? '#fff' : b.color,
-                borderColor: '#000',
-                boxShadow: selectedBabyId === b.id ? '2px 2px 0px 0px rgba(0,0,0,1)' : 'none'
-              }}
-            >
-              <span>🍼</span>
-              <span>{b.name}</span>
-            </button>
-          ))}
-
-          {/* Sponsor Button */}
+          {/* Sponsored Babies List trigger */}
           <button
             type="button"
-            onClick={() => setIsSponsorModalOpen(true)}
-            className="px-2.5 py-1 bg-gradient-to-r from-emerald-400 to-teal-400 text-black rounded-lg border border-black cursor-pointer uppercase font-black text-[8.5px] sm:text-[10px] tracking-wider hover:opacity-90 active:translate-y-0.5 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] active:shadow-none"
+            onClick={() => setIsSponsorListModalOpen(true)}
+            className="px-2.5 py-1 bg-orange-100 text-black rounded-lg border border-black cursor-pointer uppercase font-black text-[8.5px] sm:text-[10px] tracking-wider hover:opacity-90 active:translate-y-0.5 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] active:shadow-none"
           >
-            👶 SPONSOR NEW
+            👶 Sponsored Babies
           </button>
+          
+          <button 
+            onClick={() => setActiveModal({ side: 'blue', type: 'landmark' })}
+            className="px-2.5 py-1 bg-blue-100 text-black rounded-lg border border-black cursor-pointer uppercase font-black text-[8.5px] sm:text-[10px] tracking-wider hover:opacity-90 active:translate-y-0.5 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] active:shadow-none"
+          >
+            🏰 MARK B
+          </button>
+          <button 
+            onClick={() => setActiveModal({ side: 'red', type: 'landmark' })}
+            className="px-2.5 py-1 bg-red-100 text-black rounded-lg border border-black cursor-pointer uppercase font-black text-[8.5px] sm:text-[10px] tracking-wider hover:opacity-90 active:translate-y-0.5 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] active:shadow-none"
+          >
+            🏰 MARK R
+          </button>
+
+        </div>
+      )}
+
+      {/* SPONSORED BABIES LIST MODAL */}
+      {isSponsorListModalOpen && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <motion.div 
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="max-w-md w-full bg-[#fdfaf2] border-4 border-black rounded-3xl p-6 text-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden"
+          >
+            <div className="text-center mb-4">
+              <h3 className="font-black text-2xl uppercase tracking-tight text-black">Sponsored Babies</h3>
+            </div>
+            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+              {sponsoredBabies && sponsoredBabies.map(b => (
+                <button
+                  key={b.id}
+                  onClick={() => {
+                    setSelectedBabyId(b.id);
+                    setIsSponsorListModalOpen(false);
+                    addLog(`Unit switched to: ${b.name}`);
+                  }}
+                  className="w-full flex items-center justify-between p-3 border-2 border-black rounded-xl bg-white hover:bg-orange-50 transition-all font-black text-xs uppercase"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">👶</span>
+                    {b.name.toUpperCase()}
+                  </div>
+                  <span className="text-[10px] font-mono opacity-60">({b.side === 'left' ? 'LEFT' : 'RIGHT'})</span>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setIsSponsorListModalOpen(false)}
+              className="mt-6 w-full py-3 bg-black text-white rounded-xl font-black uppercase text-xs"
+            >
+              Close
+            </button>
+          </motion.div>
         </div>
       )}
 
       {/* SPONSOR YOUR BABY MODAL */}
-      {isSponsorModalOpen && (
+      {isSponsorCreateModalOpen && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <motion.div 
             initial={{ scale: 0.95, opacity: 0 }}
@@ -2222,7 +2265,7 @@ export default function App() {
             <div className="text-center mt-4">
               <button 
                 type="button"
-                onClick={() => setIsSponsorModalOpen(false)}
+                onClick={() => setIsSponsorCreateModalOpen(false)}
                 className="text-black/55 hover:text-black font-black text-[10px] uppercase tracking-wider underline cursor-pointer"
               >
                 Close & Dismiss
@@ -3148,71 +3191,7 @@ export default function App() {
       {/* FIXED BOTTOM HUD (DESKTOP) */}
       <div className="hidden md:flex fixed bottom-0 left-0 w-full h-24 bg-[#fcfaf4] border-t-4 border-black items-center justify-between px-6 z-50 shadow-[0_-5px_0px_0px_rgba(0,0,0,1)] text-black">
         
-        {/* Left Column: Selected Stroller Telemetry & List Selector */}
-        <div className="flex items-center gap-3 bg-white border-2 border-black p-1.5 rounded-xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] max-w-xs select-none">
-          {/* Active Unit Face/Avatar image bubble */}
-          <div className="w-12 h-12 rounded-lg border-2 border-black flex items-center justify-center relative overflow-hidden" style={{ backgroundColor: `${selectedColor}15` }}>
-            <div className="absolute inset-0 opacity-15" style={{ backgroundColor: selectedColor }} />
-            {selectedBabyId === 'blue' ? (
-              <span className="text-2xl z-10">💙</span>
-            ) : selectedBabyId === 'red' ? (
-              <span className="text-2xl z-10">❤️</span>
-            ) : selectedBaby ? (
-              <img
-                src={`https://api.dicebear.com/7.x/bottts-neutral/svg?seed=${encodeURIComponent(selectedBaby.name)}`}
-                className="w-10 h-10 object-contain z-10"
-                referrerPolicy="no-referrer"
-                alt={selectedName}
-              />
-            ) : (
-              <span className="text-xl z-10">♟️</span>
-            )}
-          </div>
 
-          <div className="flex flex-col min-w-40">
-            {/* Quick dropdown select trigger built direct in the HUD so hikers don't get lost on the map! */}
-            <div className="flex items-center gap-1 my-0.5">
-              <span className="text-[10px] font-black uppercase tracking-tight" style={{ color: selectedColor }}>
-                🎯 {selectedName}
-              </span>
-              <span className="text-[8px] font-mono opacity-60">({selectedPos.x}, {selectedPos.y})</span>
-            </div>
-
-            {/* Selector lists */}
-            <select
-              value={selectedBabyId}
-              onChange={(e) => {
-                setSelectedBabyId(e.target.value);
-                addLog(`Selector switched active unit back-end target to: ${e.target.value}`);
-              }}
-              className="text-[9px] font-black uppercase border border-black rounded px-1.5 py-0.5 bg-gray-50 mt-1 cursor-pointer outline-none"
-            >
-              <option value="blue">💙 Team Blue Stroller</option>
-              <option value="red">❤️ Team Red Stroller</option>
-              {sponsoredBabies && sponsoredBabies.map(b => (
-                <option key={b.id} value={b.id}>👶 Baby: {b.name.toUpperCase()} ({b.side === 'left' ? 'LEFT' : 'RIGHT'})</option>
-              ))}
-            </select>
-
-            <div className="flex items-center gap-1.5 mt-1">
-              {/* Token Display and Refill */}
-              <span className="text-[9px] font-mono font-bold bg-yellow-100 border border-black px-1.5 py-0.2 rounded-sm text-yellow-800">
-                🪙 {user ? `${profile?.currentTokens || 0} Tok` : '$1,000 Base'}
-              </span>
-              <button 
-                onClick={() => setIsPurchaseModalOpen(true)}
-                className="text-[8px] bg-yellow-300 hover:bg-yellow-400 text-black border border-black font-black rounded px-1 cursor-pointer transition-all"
-              >
-                + REFILL
-              </button>
-              {selectedSprintActive && (
-                <span className="text-[7.5px] text-cyan-700 font-extrabold tracking-tight bg-cyan-100 border border-cyan-400 px-1 rounded animate-pulse">
-                  ⚡ SPRINT
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
 
         {/* Middle Column: Unified 8 Abilities Deck targeting the currently selected unit */}
         <div className={`flex items-center gap-1.5 transition-all ${!canControl(selectedBabyId) ? 'opacity-30 pointer-events-none grayscale' : ''}`}>
@@ -3451,6 +3430,20 @@ export default function App() {
               📡 {liveTracking ? 'LOCK' : 'TRACK'}
             </button>
           </div>
+          <div className="flex items-center gap-1.5 mt-1 border-t border-black/10 pt-1">
+            <button 
+              onClick={() => setActiveModal({ side: 'blue', type: 'landmark' })}
+              className="px-2 py-0.5 bg-blue-105 border border-black rounded text-black font-black text-[8px] uppercase tracking-tight cursor-pointer"
+            >
+              🏰 MARK B
+            </button>
+            <button 
+              onClick={() => setActiveModal({ side: 'red', type: 'landmark' })}
+              className="px-2 py-0.5 bg-red-105 border border-black rounded text-black font-black text-[8px] uppercase tracking-tight cursor-pointer"
+            >
+              🏰 MARK R
+            </button>
+          </div>
         </div>
 
         {/* Dynamic Mines clear options row if selected stroller has minefields nearby */}
@@ -3660,7 +3653,7 @@ export default function App() {
                   {/* Sponsor Your Own Baby Button directly under user's name */}
                   <button
                     type="button"
-                    onClick={() => setIsSponsorModalOpen(true)}
+                    onClick={() => setIsSponsorCreateModalOpen(true)}
                     className="mt-1 mb-1 text-[7.5px] bg-gradient-to-r from-emerald-300 to-emerald-400 hover:opacity-95 text-black border border-black font-black uppercase tracking-tighter px-1.5 py-0.5 rounded cursor-pointer transition-all shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:shadow-none flex items-center justify-center gap-0.5"
                   >
                     👶 Sponsor Your Baby (500 T)
@@ -3749,30 +3742,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Persistent Side Landmark ("Mark") Buttons */}
-      {/* Blue Landmark Side Button (Left Side) */}
-      <div className="fixed left-3 sm:left-4 top-[55%] -translate-y-1/2 z-[100] flex flex-col items-center gap-1">
-        <button
-          onClick={() => setActiveModal({ side: 'blue', type: 'landmark' })}
-          className="w-12 h-12 sm:w-14 sm:h-14 flex flex-col items-center justify-center bg-blue-105 hover:bg-blue-200 border-3 border-black rounded-2xl text-black font-black uppercase hover:-translate-y-1 active:translate-y-0 transition-transform shadow-[4px_4px_0px_0px_rgba(59,130,246,1)] hover:shadow-[5px_5px_0px_0px_rgba(59,130,246,1)] cursor-pointer text-[10px] tracking-tight group"
-          title="Build Blue Landmark (50 Tokens)"
-        >
-          <span className="text-xl sm:text-2xl group-hover:scale-125 transition-transform">🏰</span>
-          <span className="text-[7.5px] sm:text-[8px] font-black tracking-tight text-blue-700 leading-none mt-1">MARK B</span>
-        </button>
-      </div>
-
-      {/* Red Landmark Side Button (Right Side) */}
-      <div className="fixed right-3 sm:right-4 top-[55%] -translate-y-1/2 z-[100] flex flex-col items-center gap-1">
-        <button
-          onClick={() => setActiveModal({ side: 'red', type: 'landmark' })}
-          className="w-12 h-12 sm:w-14 sm:h-14 flex flex-col items-center justify-center bg-red-105 hover:bg-red-200 border-3 border-black rounded-2xl text-black font-black uppercase hover:-translate-y-1 active:translate-y-0 transition-transform shadow-[4px_4px_0px_0px_rgba(239,68,68,1)] hover:shadow-[5px_5px_0px_0px_rgba(239,68,68,1)] cursor-pointer text-[10px] tracking-tight group"
-          title="Build Red Landmark (50 Tokens)"
-        >
-          <span className="text-xl sm:text-2xl group-hover:scale-125 transition-transform">🏰</span>
-          <span className="text-[7.5px] sm:text-[8px] font-black tracking-tight text-red-700 leading-none mt-1">MARK R</span>
-        </button>
-      </div>
 
       {/* Leaderboard Modal */}
       {isLeaderboardOpen && (
