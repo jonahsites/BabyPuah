@@ -3394,20 +3394,6 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Tokens indicator */}
-            <span className="text-[9px] font-mono font-black border border-black px-1.5 py-0.5 rounded bg-white shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]">
-              🪙 {user ? `${profile?.currentTokens || 0} T` : 'Base'}
-            </span>
-            
-            {/* Purchase Modal button */}
-            <button 
-              type="button"
-              onClick={() => setIsPurchaseModalOpen(true)}
-              className="text-[8.5px] bg-yellow-300 border border-black font-black rounded px-1.5 py-0.5 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] uppercase cursor-pointer"
-            >
-              BUY
-            </button>
-
             {/* Great Reset trigger */}
             <button 
               type="button"
@@ -3417,15 +3403,6 @@ export default function App() {
               title="Sabotage Reset"
             >
               <RotateCcw size={10} className="text-white fill-white stroke-[3.5]" />
-            </button>
-
-            {/* Snaplock track */}
-            <button 
-              type="button"
-              onClick={() => setLiveTracking(!liveTracking)}
-              className={`text-[8px] border border-black px-1.5 py-0.5 rounded font-black ${liveTracking ? 'bg-emerald-300' : 'bg-gray-100'}`}
-            >
-              📡 {liveTracking ? 'LOCK' : 'TRACK'}
             </button>
           </div>
           <div className="flex items-center gap-1.5 mt-1 border-t border-black/10 pt-1">
