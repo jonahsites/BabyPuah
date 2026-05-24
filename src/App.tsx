@@ -893,7 +893,7 @@ export default function App() {
       
       window.removeEventListener("resize", handleResize);
     };
-  }, []);
+  }, [user]);
 
 
 
@@ -3964,7 +3964,8 @@ export default function App() {
           width: `${widthSize * 4}px`,
           height: `${heightSize * 4}px`,
           backgroundImage: 'linear-gradient(to right, rgba(0,0,0,0.06) 1px, transparent 1px), linear-gradient(to bottom, rgba(0,0,0,0.06) 1px, transparent 1px)',
-          backgroundSize: '4px 4px'
+          backgroundSize: '4px 4px',
+          transform: `translate(${transformRef.current.x}px, ${transformRef.current.y}px) scale(${transformRef.current.scale})`
         }}
         onClick={handleGridClick}
       >
