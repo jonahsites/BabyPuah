@@ -35,7 +35,108 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Disable X-Powered-By header to prevent technology stack fingerprinting
+  app.disable("x-powered-by");
+
+  // In-memory rate limiting map
+  const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+  const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+  const RATE_LIMIT_MAX_REQUESTS = 300; // Limit to 300 requests/min per IP to fully support fast polling and game updates safely
+
+  // Periodically clean up expired rate limiting entries
+  setInterval(() => {
+    const now = Date.now();
+    for (const [ip, data] of rateLimitMap.entries()) {
+      if (now > data.resetTime) {
+        rateLimitMap.delete(ip);
+      }
+    }
+  }, 180000); // Check every 3 minutes
+
   app.use(express.json());
+
+  // Unified Security & Protection Middleware
+  app.use((req, res, next) => {
+    // 1. IP-Based Rate Limiting Protection
+    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0].trim() || req.socket.remoteAddress || "anonymous";
+    const now = Date.now();
+
+    let limitData = rateLimitMap.get(ip);
+    if (!limitData || now > limitData.resetTime) {
+      limitData = { count: 0, resetTime: now + RATE_LIMIT_WINDOW_MS };
+      rateLimitMap.set(ip, limitData);
+    }
+
+    limitData.count++;
+
+    // Express standard limit tracking headers
+    res.setHeader("X-RateLimit-Limit", RATE_LIMIT_MAX_REQUESTS);
+    res.setHeader("X-RateLimit-Remaining", Math.max(0, RATE_LIMIT_MAX_REQUESTS - limitData.count));
+    res.setHeader("X-RateLimit-Reset", Math.ceil(limitData.resetTime / 1000));
+
+    if (limitData.count > RATE_LIMIT_MAX_REQUESTS) {
+      return res.status(429).json({
+        error: "Too Many Requests",
+        message: "You are issuing requests too fast. Please take a slight breather and try again in a moment.",
+      });
+    }
+
+    // 2. Strict & Restrictive Cross-Origin Resource Sharing (CORS) Configuration
+    const allowedOrigins = [
+      "https://ai.studio",
+      "https://studio.google.com",
+      "https://localhost:3000",
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+    ];
+
+    const origin = req.headers.origin;
+    if (origin) {
+      const isAllowed = allowedOrigins.includes(origin) || 
+        origin.endsWith(".google.com") || 
+        origin.endsWith(".run.app") || 
+        origin.endsWith(".googleusercontent.com");
+
+      if (isAllowed) {
+        res.setHeader("Access-Control-Allow-Origin", origin);
+        res.setHeader("Access-Control-Allow-Credentials", "true");
+      }
+    }
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, PATCH, DELETE");
+    res.setHeader("Access-Control-Allow-Headers", "X-Requested-With,Content-Type,Authorization");
+
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(200);
+    }
+
+    // 3. Robust Content Security Policy (CSP) & Client Security Protocols
+    const csp = [
+      "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval' wss:;",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://www.gstatic.com https://js.stripe.com;",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com;",
+      "font-src 'self' https://fonts.gstatic.com data:;",
+      "img-src 'self' data: https:;",
+      "connect-src 'self' https: wss:;",
+      "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://*.firebaseapp.com https://*.google.com;",
+      "frame-ancestors 'self' https://*.google.com https://*.run.app https://ai.studio https://*.studio.google.com https://*.googleusercontent.com;"
+    ].join(" ");
+
+    res.setHeader("Content-Security-Policy", csp);
+
+    // Prevents Clickjacking Vulnerabilities
+    res.setHeader("X-Frame-Options", "SAMEORIGIN");
+
+    // Prevents Mime-Type Sniffing Exploits
+    res.setHeader("X-Content-Type-Options", "nosniff");
+
+    // Restricts Referrer Leaks
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+
+    // Demarcates Allowed Browser Hardware & Privacy Sensors
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
+
+    next();
+  });
 
   // API Route: Configuration Status
   app.get("/api/config-status", (req, res) => {
