@@ -129,6 +129,9 @@ async function startServer() {
     // Prevents Mime-Type Sniffing Exploits
     res.setHeader("X-Content-Type-Options", "nosniff");
 
+    // Enforces HTTPS Connection Security (HSTS)
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+
     // Restricts Referrer Leaks
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
 
