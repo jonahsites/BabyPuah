@@ -27,7 +27,46 @@ function getBaseUrl(req: express.Request): string {
 }
 
 const app = express();
+app.disable("x-powered-by");
 app.use(express.json());
+
+// Set up security headers for API requests
+app.use((req, res, next) => {
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
+  
+  // CORS Configuration matching server.ts
+  const allowedOrigins = [
+    "https://ai.studio",
+    "https://studio.google.com",
+    "https://localhost:3000",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+  ];
+
+  const origin = req.headers.origin;
+  if (origin) {
+    const isAllowed = allowedOrigins.includes(origin) || 
+      origin.endsWith(".google.com") || 
+      origin.endsWith(".run.app") || 
+      origin.endsWith(".googleusercontent.com");
+
+    if (isAllowed) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+    }
+  }
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, PATCH, DELETE");
+  res.setHeader("Access-Control-Allow-Headers", "X-Requested-With,Content-Type,Authorization");
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+  next();
+});
 
 // API Route: Configuration Status
 app.get(["/api/config-status", "/config-status"], (req, res) => {
