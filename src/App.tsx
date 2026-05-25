@@ -387,7 +387,7 @@ export default function App() {
   const [sprintBlue, setSprintBlue] = useState(0); // timestamp until end
   const [sprintRed, setSprintRed] = useState(0); // timestamp until end
 
-  const [isWallBuilding, setIsWallBuilding] = useState<{ side: string, budget: number } | null>(null);
+  const [isWallBuilding, setIsWallBuilding] = useState<{ side: 'blue' | 'red', budget: number } | null>(null);
   const isWallBuildingRef = useRef<any>(null);
   useEffect(() => {
     isWallBuildingRef.current = isWallBuilding;
@@ -3255,7 +3255,7 @@ export default function App() {
         {/* Middle Column: Unified 8 Abilities Deck targeting the currently selected unit */}
         <div className={`flex items-center gap-1.5 transition-all ${!canControl(selectedBabyId) ? 'opacity-30 pointer-events-none grayscale' : ''}`}>
           <button 
-            onClick={() => setActiveModal({ side: selectedBabyId, type: 'move' })}
+            onClick={() => setActiveModal({ side: selectedBabySide, type: 'move' })}
             className="w-11 h-11 flex flex-col items-center justify-center bg-[#3b82f6] border-2 border-black rounded-xl text-white font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2.5px_2.5px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
             title="Move pack direct steps"
           >
@@ -3264,7 +3264,7 @@ export default function App() {
           </button>
           
           <button 
-            onClick={() => setActiveModal({ side: selectedBabyId, type: 'grid' })}
+            onClick={() => setActiveModal({ side: selectedBabySide, type: 'grid' })}
             className="w-11 h-11 flex flex-col items-center justify-center bg-blue-100 border-2 border-black rounded-xl text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2.5px_2.5px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
             title="Push standard grid segments"
           >
@@ -3282,7 +3282,7 @@ export default function App() {
           </button>
 
           <button 
-            onClick={() => setActiveModal({ side: selectedBabyId, type: 'wall' })}
+            onClick={() => setActiveModal({ side: selectedBabySide, type: 'wall' })}
             className="w-11 h-11 flex flex-col items-center justify-center bg-slate-200 border-2 border-black rounded-xl text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2.5px_2.5px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
             title="Fortify brick brick build-up blocking lines"
           >
@@ -3291,7 +3291,7 @@ export default function App() {
           </button>
 
           <button 
-            onClick={() => setActiveModal({ side: selectedBabyId, type: 'mine' })}
+            onClick={() => setActiveModal({ side: selectedBabySide, type: 'mine' })}
             className="w-11 h-11 flex flex-col items-center justify-center bg-orange-200 border-2 border-black rounded-xl text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2.5px_2.5px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
             title="Deploys deep trap minefields in opposition lines"
           >
@@ -3318,7 +3318,7 @@ export default function App() {
           </button>
 
           <button 
-            onClick={() => setActiveModal({ side: selectedBabyId, type: 'slingshot' })}
+            onClick={() => setActiveModal({ side: selectedBabySide, type: 'slingshot' })}
             className="w-11 h-11 flex flex-col items-center justify-center bg-rose-200 border-2 border-black rounded-xl text-black font-black text-[9px] uppercase hover:-translate-y-0.5 active:translate-y-0.5 shadow-[2.5px_2.5px_0px_0px_rgba(0,0,0,1)] cursor-pointer animate-pulse"
             title="Slingshot Baby (Cost: 100 Tokens)"
           >
@@ -3511,7 +3511,7 @@ export default function App() {
           <div className={`grid grid-cols-4 gap-1.5 transition-all ${!canControl(selectedBabyId) ? 'opacity-30 pointer-events-none grayscale' : ''}`}>
             <button 
               type="button"
-              onClick={() => setActiveModal({ side: selectedBabyId, type: 'move' })}
+              onClick={() => setActiveModal({ side: selectedBabySide, type: 'move' })}
               className="py-1.5 px-0.5 flex flex-col items-center justify-center bg-[#3b82f6] border border-black rounded-lg text-white font-black uppercase shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] text-[9px] cursor-pointer"
             >
               <span className="text-xs">💥</span>
@@ -3520,7 +3520,7 @@ export default function App() {
             
             <button 
               type="button"
-              onClick={() => setActiveModal({ side: selectedBabyId, type: 'grid' })}
+              onClick={() => setActiveModal({ side: selectedBabySide, type: 'grid' })}
               className="py-1.5 px-0.5 flex flex-col items-center justify-center bg-blue-50 border border-black rounded-lg text-black font-black uppercase shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] text-[9px] cursor-pointer"
             >
               <span className="text-xs">♟️</span>
@@ -3538,7 +3538,7 @@ export default function App() {
 
             <button 
               type="button"
-              onClick={() => setActiveModal({ side: selectedBabyId, type: 'wall' })}
+              onClick={() => setActiveModal({ side: selectedBabySide, type: 'wall' })}
               className="py-1.5 px-0.5 flex flex-col items-center justify-center bg-slate-100 border border-black rounded-lg text-black font-black uppercase shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] text-[9px] cursor-pointer"
             >
               <span className="text-xs">🚧</span>
@@ -3547,7 +3547,7 @@ export default function App() {
 
             <button 
               type="button"
-              onClick={() => setActiveModal({ side: selectedBabyId, type: 'mine' })}
+              onClick={() => setActiveModal({ side: selectedBabySide, type: 'mine' })}
               className="py-1.5 px-0.5 flex flex-col items-center justify-center bg-orange-100 border border-black rounded-lg text-black font-black uppercase shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] text-[9px] cursor-pointer"
             >
               <span className="text-xs">💣</span>
@@ -3574,7 +3574,7 @@ export default function App() {
 
             <button 
               type="button"
-              onClick={() => setActiveModal({ side: selectedBabyId, type: 'slingshot' })}
+              onClick={() => setActiveModal({ side: selectedBabySide, type: 'slingshot' })}
               className="py-1.5 px-0.5 flex flex-col items-center justify-center bg-rose-150 border border-black rounded-lg text-black font-black uppercase shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] text-[9px] cursor-pointer animate-pulse"
             >
               <span className="text-xs">🏹</span>
@@ -3600,7 +3600,7 @@ export default function App() {
           <div className="flex items-center gap-2">
             {user ? (
               <div className="flex items-center gap-1.5 bg-white border-2 border-black rounded-xl p-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                <img src={user.photoURL || ""} alt="" className="w-5 h-5 rounded border border-black" referrerPolicy="no-referrer" />
+                <img src={user.photoURL || ""} alt="User profile avatar" className="w-5 h-5 rounded border border-black" referrerPolicy="no-referrer" />
                 <span className="text-[9px] bg-green-200 text-black border border-black font-black uppercase tracking-wider px-1.5 rounded-sm font-mono">{profile?.currentTokens || 0} Tokens</span>
                 <button 
                   onClick={() => setIsPurchaseModalOpen(true)}

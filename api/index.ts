@@ -108,6 +108,11 @@ app.use((req, res, next) => {
   next();
 });
 
+// Health check endpoints for orchestration
+app.get(["/health", "/healthz", "/api/health"], (req, res) => {
+  res.json({ status: "healthy", timestamp: new Date().toISOString() });
+});
+
 // API Route: Configuration Status
 app.get(["/api/config-status", "/config-status"], (req, res) => {
   res.json({
@@ -119,11 +124,22 @@ app.get(["/api/config-status", "/config-status"], (req, res) => {
 // API Route: Create Checkout Session
 app.post(["/api/create-checkout-session", "/create-checkout-session"], async (req, res) => {
   const { tokens, userId } = req.body;
+
+  // Strict input schema validation to prevent payload manipulation
+  const parsedTokens = Number(tokens);
+  if (tokens === undefined || tokens === null || isNaN(parsedTokens) || parsedTokens <= 0 || parsedTokens > 10000 || !Number.isInteger(parsedTokens)) {
+    return res.status(400).json({ error: "Invalid request data", message: "Token quantity must be a positive integer between 1 and 10,000." });
+  }
+  if (typeof userId !== "string" || !userId || userId.trim().length === 0 || userId.length > 128) {
+    return res.status(400).json({ error: "Invalid request data", message: "User identifier must be a valid, non-empty string under 128 characters." });
+  }
+
+  const sanitizedUserId = userId.trim();
   const baseUrl = getBaseUrl(req);
 
   if (!stripe) {
     // Sandbox Checkout Simulation Mode
-    const mockSessionId = `mock_session_${Date.now()}_u_${userId}_t_${tokens}`;
+    const mockSessionId = `mock_session_${Date.now()}_u_${sanitizedUserId}_t_${parsedTokens}`;
     const mockSessionUrl = `${baseUrl}/?payment=success&session_id=${mockSessionId}&sandbox=true`;
     return res.json({ id: mockSessionId, url: mockSessionUrl });
   }
@@ -136,10 +152,10 @@ app.post(["/api/create-checkout-session", "/create-checkout-session"], async (re
           price_data: {
             currency: "usd",
             product_data: {
-              name: `${tokens} Game Tokens`,
+              name: `${parsedTokens} Game Tokens`,
               description: "Purchase tokens for Territory War",
             },
-            unit_amount: tokens * 100, // $1 per token
+            unit_amount: parsedTokens * 100, // $1 per token
           },
           quantity: 1,
         },
@@ -148,8 +164,8 @@ app.post(["/api/create-checkout-session", "/create-checkout-session"], async (re
       success_url: `${baseUrl}/?payment=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/?payment=cancel`,
       metadata: {
-        userId,
-        tokens: tokens.toString(),
+        userId: sanitizedUserId,
+        tokens: parsedTokens.toString(),
       },
     });
 
