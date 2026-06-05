@@ -294,8 +294,8 @@ async function startServer() {
           return { success: false, error: "INVALID_AMOUNT", message: "Payment transaction support amount is invalid." };
         }
 
-        // Token credit calculations (strictly 50 tokens per $1.00 USD)
-        const tokenAmount = Math.floor(dollarValue * 50);
+        // Token credit calculations (strictly 1 token per $1.00 USD)
+        const tokenAmount = Math.floor(dollarValue * 1);
 
         const userRef = db.collection("users").doc(userId);
         const userSnap = await transaction.get(userRef);

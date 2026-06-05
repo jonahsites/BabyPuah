@@ -4000,10 +4000,10 @@ export default function App() {
                     💝 Support Conversion Rate
                   </div>
                   <div className="text-xl font-black text-black font-sans leading-none my-1 font-mono">
-                    $1.00 USD = 50 tokens
+                    $1.00 USD = 1 Token
                   </div>
                   <p className="text-[9px] text-black/65 font-medium leading-normal max-w-sm mx-auto">
-                    Support any amount you wish! The server automatically processes your donation value into game credits (e.g., <strong className="text-rose-600">1,000 Tokens</strong> on a $20 support, or <strong className="text-rose-600 font-extrabold">2,500 Tokens</strong> on a $50 support!).
+                    Support any amount you wish! The server automatically processes your donation value into game credits (e.g., <strong className="text-rose-600">20 Tokens</strong> on a $20 support, or <strong className="text-rose-600 font-extrabold">50 Tokens</strong> on a $50 support).
                   </p>
                 </div>
 
@@ -4063,7 +4063,7 @@ export default function App() {
                         onClick={() => setShowKofiGuide(!showKofiGuide)}
                         className="text-[8px] font-black text-rose-600 hover:text-rose-700 underline cursor-pointer uppercase flex items-center gap-1"
                       >
-                        {showKofiGuide ? "💡 Hide Help Guide" : "💡 Where is my Receipt Code?"}
+                        {showKofiGuide ? "💡 Hide Guide" : "💡 How does this work? (Important Payment/Code Guide)"}
                       </button>
                     </div>
 
@@ -4075,8 +4075,21 @@ export default function App() {
                           exit={{ opacity: 0, height: 0 }}
                           className="bg-stone-50 border-2 border-black rounded-xl p-3 text-left space-y-3 mt-3 overflow-hidden"
                         >
-                          <h5 className="text-[9px] font-black uppercase text-black border-b border-black/10 pb-1 flex items-center gap-1">
-                            📋 Visual Guide: How to Get Your Support Key
+                          {/* 1. Payment Explanation (Charity/Race Connection) FIRST */}
+                          <div className="bg-rose-50 border-2 border-rose-300 rounded-xl p-3 space-y-1.5">
+                            <h5 className="text-[9.5px] font-black uppercase text-rose-750 flex items-center gap-1">
+                              ❤️ 1. Your Support is a Direct Donation to the Server & Charity
+                            </h5>
+                            <p className="text-[8.5px] text-black/80 font-bold leading-relaxed">
+                              When you click the checkout button above, you are making a <strong className="text-rose-700 font-extrabold font-sans">direct donation</strong>. 100% of these contributions are used for charity-focused server upkeep, hosting costs, battle grid database bandwidth, and keeping the real-time multiplayer baby race alive!
+                            </p>
+                            <p className="text-[8.5px] text-black/80 font-bold leading-relaxed">
+                              To say thanks, our automated system instantly awards you with <strong className="text-rose-750 font-extrabold font-sans">1 Game Token for every $1.00 USD donated</strong> (e.g., $10 donation = 10 Tokens, $50 donation = 50 Tokens). You can use these tokens in-game to deploy barriers, boost stroller speed, and trigger slingshots on the live board!
+                            </p>
+                          </div>
+
+                          <h5 className="text-[9px] font-black uppercase text-black border-b border-black/10 pt-1 pb-1 flex items-center gap-1">
+                            📋 2. How to Retrieve Your Receipt Code to Claim Your Tokens
                           </h5>
                           
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[8.5px]">
@@ -4120,13 +4133,13 @@ export default function App() {
                                   <span className="bg-purple-105 text-purple-700 font-extrabold px-1 rounded text-[7px]">METHOD B</span>
                                   <span>Payment Success Screen</span>
                                 </div>
-                                <p className="text-black/60 mb-2 font-medium text-[8px] leading-tight">
+                                <p className="text-black/60 mb-2 font-medium text-[8px] leading-tight font-sans">
                                   Right after checking out, the "Thank you" screen shows your receipt details before leaving.
                                 </p>
                               </div>
 
                               {/* Realistic Success Banner Mock */}
-                              <div className="bg-emerald-50/50 border border-dashed border-black/20 rounded-md p-2 font-mono text-[7px] text-black/85 text-center relative overflow-hidden flex flex-col justify-center items-center">
+                              <div className="bg-emerald-50/50 border border-dashed border-[#10b981]/25 rounded-md p-2 font-mono text-[7px] text-black/85 text-center relative overflow-hidden flex flex-col justify-center items-center">
                                 <div className="text-emerald-600 font-sans font-black text-[8px] mb-0.5">🎉 Payment Complete!</div>
                                 <p className="font-sans font-bold text-black/60 mb-1 leading-none text-[6.5px]">Backed: BabyPush Special</p>
                                 
