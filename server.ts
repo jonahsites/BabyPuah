@@ -3,8 +3,19 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import Stripe from "stripe";
 import dotenv from "dotenv";
+import admin from "firebase-admin";
 
 dotenv.config();
+
+if (!admin.apps.length) {
+  admin.initializeApp({
+    projectId: "babypush"
+  });
+}
+const db = new admin.firestore.Firestore({
+  projectId: "babypush",
+  databaseId: "ai-studio-07a2b1ab-3082-4aa5-8a0a-93f535e890ae"
+});
 
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
@@ -54,6 +65,7 @@ async function startServer() {
   }, 180000); // Check every 3 minutes
 
   app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
 
   // Unified Security & Protection Middleware
   app.use((req, res, next) => {
@@ -152,6 +164,204 @@ async function startServer() {
       stripeEnabled: !!stripe,
       hasSecretKey: !!process.env.STRIPE_SECRET_KEY,
     });
+  });
+
+  // API Route: Ko-fi Webhook Listener
+  app.post("/api/kofi-webhook", async (req, res) => {
+    try {
+      const { data } = req.body;
+      if (!data) {
+        console.error("Missing data field in Ko-fi webhook body:", req.body);
+        return res.status(400).send("Bad Request: Missing data field");
+      }
+
+      let payload: any;
+      try {
+        payload = JSON.parse(data);
+      } catch (parseErr) {
+        console.error("Failed to parse Ko-fi webhook JSON:", parseErr);
+        return res.status(400).send("Bad Request: Invalid JSON in data");
+      }
+
+      // Secure Verification Token Check (User provided 29cd838f-4821-4584-b512-0c01d78e1686)
+      const localVerificationToken = "29cd838f-4821-4584-b512-0c01d78e1686";
+      if (payload.verification_token !== localVerificationToken) {
+        console.warn("Unauthorized Ko-fi verification token attempt:", payload.verification_token);
+        return res.status(401).send("Unauthorized: Invalid verification token");
+      }
+
+      const transactionId = (payload.kofi_transaction_id || payload.message_id || "").toString().trim();
+      if (!transactionId) {
+        console.error("Missing transaction identifier fields in Ko-fi payload:", payload);
+        return res.status(400).send("Bad Request: Missing transaction ID");
+      }
+
+      const amount = parseFloat(payload.amount) || 0.0;
+      const fromName = (payload.from_name || "Anonymous").trim();
+      const timestamp = payload.timestamp || new Date().toISOString();
+      const type = payload.type || "Donation";
+      const email = (payload.email || "").trim();
+      const isSubscription = payload.is_subscription_payment || false;
+      const message = payload.message || "";
+      const currency = payload.currency || "USD";
+
+      console.log(`[Ko-fi Webhook] Processing Transaction ${transactionId} - $${amount} from ${fromName}`);
+
+      // Store in firestore database
+      const paymentRef = db.collection("kofi_payments").doc(transactionId);
+      const existing = await paymentRef.get();
+
+      if (!existing.exists) {
+        await paymentRef.set({
+          transactionId,
+          name: fromName,
+          amount,
+          currency,
+          message,
+          timestamp,
+          type,
+          email,
+          isSubscription,
+          claimed: false,
+          claimedBy: null,
+          claimedAt: null,
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        console.log(`[Ko-fi Webhook] Successfully recorded payment of $${amount} under Tx: ${transactionId}`);
+      } else {
+        console.log(`[Ko-fi Webhook] Transaction ID ${transactionId} already exists, skipping duplication check.`);
+      }
+
+      res.status(200).send("OK");
+    } catch (err: any) {
+      console.error("Internal process error on Ko-fi webhook:", err);
+      res.status(500).send("Internal Server Error");
+    }
+  });
+
+  // API Route: Secure server-side Ko-fi claiming
+  app.post("/api/claim-kofi", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Unauthorized", message: "Missing or invalid authorization token." });
+      }
+
+      const idToken = authHeader.split("Bearer ")[1];
+      let decodedToken;
+      try {
+        decodedToken = await admin.auth().verifyIdToken(idToken);
+      } catch (tokenErr: any) {
+        console.error("Firebase ID Token verification failed:", tokenErr);
+        return res.status(401).json({ error: "Unauthorized", message: "Failed to verify user credentials." });
+      }
+
+      const userId = decodedToken.uid;
+      const { transactionId } = req.body;
+
+      if (!transactionId || typeof transactionId !== "string" || transactionId.trim().length === 0) {
+        return res.status(400).json({ error: "Bad Request", message: "Please supply a valid transaction receipt ID." });
+      }
+
+      const trimmedTxId = transactionId.trim();
+      const paymentRef = db.collection("kofi_payments").doc(trimmedTxId);
+      
+      const claimResult = await db.runTransaction(async (transaction) => {
+        const paymentSnap = await transaction.get(paymentRef);
+        if (!paymentSnap.exists) {
+          return { 
+            success: false, 
+            error: "NOT_FOUND", 
+            message: "Transaction ID not found. Webhooks can take up to 30 seconds to deliver. Please verify the receipt ID as displayed on your Ko-fi email receipt layout." 
+          };
+        }
+
+        const paymentData = paymentSnap.data();
+        if (!paymentData) {
+          return { success: false, error: "NOT_FOUND", message: "Transaction details are empty." };
+        }
+
+        if (paymentData.claimed) {
+          return { 
+            success: false, 
+            error: "ALREADY_CLAIMED", 
+            message: `This transaction was already claimed on ${paymentData.claimedAt} by user ID ending in ...${paymentData.claimedBy.slice(-5)}` 
+          };
+        }
+
+        const dollarValue = paymentData.amount || 0;
+        if (dollarValue <= 0) {
+          return { success: false, error: "INVALID_AMOUNT", message: "Payment transaction support amount is invalid." };
+        }
+
+        // Token credit calculations (strictly 50 tokens per $1.00 USD)
+        const tokenAmount = Math.floor(dollarValue * 50);
+
+        const userRef = db.collection("users").doc(userId);
+        const userSnap = await transaction.get(userRef);
+
+        // 1. Set payment as claimed
+        transaction.update(paymentRef, {
+          claimed: true,
+          claimedBy: userId,
+          claimedAt: new Date().toISOString()
+        });
+
+        // 2. Add tokens & donation details
+        const coffeesValue = Math.round(dollarValue / 3.0) || 1;
+        const claimLog = {
+          name: paymentData.name || "Anonymous",
+          transactionId: trimmedTxId,
+          coffees: coffeesValue,
+          tokenAmount,
+          dollarValue,
+          timestamp: new Date().toISOString()
+        };
+
+        if (!userSnap.exists) {
+          transaction.set(userRef, {
+            currentTokens: tokenAmount,
+            totalDonated: dollarValue,
+            kofiClaims: [claimLog],
+            displayName: paymentData.name || "Aesthetic Player"
+          });
+        } else {
+          const userData = userSnap.data() || {};
+          const oldTokens = userData.currentTokens || 0;
+          const oldDonated = userData.totalDonated || 0;
+          const oldClaims = userData.kofiClaims || [];
+
+          transaction.update(userRef, {
+            currentTokens: oldTokens + tokenAmount,
+            totalDonated: oldDonated + dollarValue,
+            kofiClaims: [...oldClaims, claimLog]
+          });
+        }
+
+        // 3. Update global raised charity metrics
+        const gameRef = db.collection("games").doc("global");
+        transaction.set(gameRef, {
+          totalRaised: admin.firestore.FieldValue.increment(dollarValue)
+        }, { merge: true });
+
+        return { success: true, dollarValue, tokenAmount, name: paymentData.name };
+      });
+
+      if (!claimResult.success) {
+        return res.status(400).json({ error: claimResult.error, message: claimResult.message });
+      }
+
+      return res.json({
+        success: true,
+        message: `Successfully processed support of $${claimResult.dollarValue.toFixed(2)} from ${claimResult.name}!`,
+        tokensAdded: claimResult.tokenAmount,
+        amount: claimResult.dollarValue
+      });
+
+    } catch (err: any) {
+      console.error("Error in claim-kofi endpoint:", err);
+      res.status(500).json({ error: "Internal Server Error", message: err.message });
+    }
   });
 
   // API Route: Create Checkout Session

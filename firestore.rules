@@ -16,5 +16,11 @@ service cloud.firestore {
     match /games/{gameId} {
       allow read, write: if true;
     }
+
+    // Ko-fi payments verified by backend server
+    match /kofi_payments/{transactionId} {
+      allow get: if true;
+      allow list, write: if false;
+    }
   }
 }

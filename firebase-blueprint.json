@@ -34,6 +34,26 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["bluePos", "redPos", "blueRot", "redRot", "blueTokens", "redTokens", "blueTrail", "redTrail", "walls", "mines", "updatedAt"]
+    },
+    "KofiPayment": {
+      "title": "Kofi Payment",
+      "description": "Information on verified Ko-fi webhook payments.",
+      "type": "object",
+      "properties": {
+        "transactionId": { "type": "string" },
+        "name": { "type": "string" },
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "message": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "type": { "type": "string" },
+        "email": { "type": "string" },
+        "isSubscription": { "type": "boolean" },
+        "claimed": { "type": "boolean" },
+        "claimedBy": { "type": "string" },
+        "claimedAt": { "type": "string" }
+      },
+      "required": ["transactionId", "name", "amount", "claimed"]
     }
   },
   "firestore": {
@@ -44,6 +64,10 @@
     "/games/{gameId}": {
       "schema": "GameState",
       "description": "Shared game sessions."
+    },
+    "/kofi_payments/{transactionId}": {
+      "schema": "KofiPayment",
+      "description": "Incoming Ko-fi payments from webhooks."
     }
   }
 }

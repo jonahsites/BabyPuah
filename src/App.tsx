@@ -7,7 +7,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Minus, RotateCcw } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { db, auth } from "./lib/firebase";
-import { doc, onSnapshot, updateDoc, setDoc, getDoc, serverTimestamp, increment, collection, query, orderBy, limit, getDocs } from "firebase/firestore";
+import { doc, onSnapshot, updateDoc, setDoc, getDoc, serverTimestamp, increment, collection, query, orderBy, limit, getDocs, arrayUnion } from "firebase/firestore";
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, User as FirebaseUser, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import SlingshotGame from "./components/SlingshotGame";
 
@@ -115,6 +115,11 @@ export default function App() {
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [paymentLoading, setPaymentLoading] = useState<boolean>(false);
   const [customTokenAmount, setCustomTokenAmount] = useState<string>("250");
+  const [activePurchaseTab, setActivePurchaseTab] = useState<'kofi' | 'sandbox'>('kofi');
+  const [kofiName, setKofiName] = useState("");
+  const [kofiTxId, setKofiTxId] = useState("");
+  const [kofiAmount, setKofiAmount] = useState<string>("20");
+  const [showKofiGuide, setShowKofiGuide] = useState(false);
   
   // Fetch Stripe Configuration Status on load
   useEffect(() => {
@@ -241,6 +246,54 @@ export default function App() {
     }
   };
 
+  const creditKofiDonation = async (_dollarValue: number, _supporterName: string, transactionId: string) => {
+    if (!user) {
+      setPaymentError("You must be logged in to claim tokens.");
+      return;
+    }
+    const trimmedTxId = transactionId.trim();
+    if (!trimmedTxId) {
+      setPaymentError("Please enter your Ko-fi Transaction ID or Receipt Code to claim.");
+      return;
+    }
+
+    setPaymentLoading(true);
+    setPaymentError(null);
+    setPaymentSuccessMessage(null);
+
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch("/api/claim-kofi", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
+        body: JSON.stringify({ transactionId: trimmedTxId })
+      });
+
+      if (!response.ok) {
+        let errMsg = "Claim failed";
+        try {
+          const errData = await response.json();
+          errMsg = errData.message || errData.error || errMsg;
+        } catch (_) {}
+        throw new Error(errMsg);
+      }
+
+      const data = await response.json();
+      setPaymentSuccessMessage(`🎉 ${data.message} +${data.tokensAdded} Tokens credited successfully! ☕`);
+      setIsPurchaseModalOpen(false);
+      setKofiName("");
+      setKofiTxId("");
+    } catch (err: any) {
+      console.error("Secure claim-kofi failed:", err);
+      setPaymentError(err.message || String(err));
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
   // Sync Auth and User Profile
   useEffect(() => {
     let unsubUser: (() => void) | null = null;
@@ -257,7 +310,24 @@ export default function App() {
         const userRef = doc(db, "users", u.uid);
         unsubUser = onSnapshot(userRef, (snap) => {
           if (snap.exists()) {
-            setProfile(snap.data() as any);
+            const data = snap.data();
+            if (data.launchRef !== "launch_v1") {
+              const tempName = data.displayName || u.displayName || "Unknown Wanderer";
+              const cleanProfile = {
+                displayName: tempName,
+                photoURL: data.photoURL || u.photoURL || "https://api.dicebear.com/7.x/bottts/svg?seed=" + encodeURIComponent(tempName),
+                totalDonated: 0,
+                currentTokens: 100, // Reset to standard starting tokens
+                kofiClaims: [],
+                launchRef: "launch_v1",
+                updatedAt: serverTimestamp()
+              };
+              setDoc(userRef, cleanProfile);
+              setProfile(cleanProfile as any);
+              setPaymentSuccessMessage("Welcome to the Official Launch of Baby Push! Dev mode is complete and accounts have been reset. Enjoy your 100 launching free tokens! 🍼🛡️");
+            } else {
+              setProfile(data as any);
+            }
           } else {
             // Create profile
             const tempName = u.displayName || signUpDisplayName || "Unknown Wanderer";
@@ -265,12 +335,14 @@ export default function App() {
               displayName: tempName,
               photoURL: u.photoURL || "https://api.dicebear.com/7.x/bottts/svg?seed=" + encodeURIComponent(tempName),
               totalDonated: 0,
-              currentTokens: 100, // Initial free tokens?
+              currentTokens: 100,
+              kofiClaims: [],
+              launchRef: "launch_v1",
               updatedAt: serverTimestamp()
             };
             setDoc(userRef, newProfile);
             setProfile(newProfile as any);
-            setPaymentSuccessMessage("Welcome to Baby Push! You have been credited with 100 courtesy tokens as a welcome gift! Go control the strollers or deploy tactical support! 🍼🛡️");
+            setPaymentSuccessMessage("Welcome to the Official Launch of Baby Push! You have been credited with 100 courtesy tokens as a welcome gift! Go control the strollers or deploy tactical support! 🍼🛡️");
           }
         }, (err: any) => {
           console.error("Error subscribing to user profile:", err);
@@ -295,12 +367,14 @@ export default function App() {
     };
   }, []);
 
-  // Sync Leaderboard
+  // Sync Leaderboard (filtered to launch_v1 for official launch)
   useEffect(() => {
-    const q = query(collection(db, "users"), orderBy("totalDonated", "desc"), limit(10));
+    const q = query(collection(db, "users"), orderBy("totalDonated", "desc"), limit(100));
     const unsub = onSnapshot(q, (snap) => {
-      const donors = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-      setLeaderboard(donors);
+      const donors = snap.docs
+        .map(d => ({ id: d.id, ...d.data() } as any))
+        .filter(d => d.launchRef === "launch_v1" && d.totalDonated > 0);
+      setLeaderboard(donors.slice(0, 10));
     });
     return () => unsub();
   }, []);
@@ -549,15 +623,45 @@ export default function App() {
             minesRevealed: false,
             blueMinesRevealed: false,
             redMinesRevealed: false,
-            logs: [],
+            logs: [{ msg: "🚀 Welcome to the Official Launch of Territory War Grid!", time: new Date().toLocaleTimeString() }],
             sprintBlue: 0,
             sprintRed: 0,
             totalRaised: 0,
             landmarks: [],
             sponsoredBabies: [],
             greatResetEvent: null,
+            version: "launch_v1",
             updatedAt: serverTimestamp()
           });
+        } else {
+          const gameData = snap.data();
+          if (gameData.version !== "launch_v1") {
+            // FORCE RESET FOR OFFICIAL LAUNCH
+            await setDoc(gameRef, {
+              bluePos: initialBlue,
+              redPos: initialRed,
+              blueRot: -90,
+              redRot: -90,
+              blueTokens: 1000,
+              redTokens: 1000,
+              blueTrail: [],
+              redTrail: [],
+              walls: [],
+              mines: [],
+              minesRevealed: false,
+              blueMinesRevealed: false,
+              redMinesRevealed: false,
+              logs: [{ msg: "🚀 Welcome to the Official Launch of Territory War Grid!", time: new Date().toLocaleTimeString() }],
+              sprintBlue: 0,
+              sprintRed: 0,
+              totalRaised: 0,
+              landmarks: [],
+              sponsoredBabies: [],
+              greatResetEvent: null,
+              version: "launch_v1",
+              updatedAt: serverTimestamp()
+            });
+          }
         }
       } catch (e: any) {
         if (e && (e.code === 'unavailable' || (e.message && e.message.includes('offline')))) {
@@ -1862,9 +1966,13 @@ export default function App() {
       minesRevealed: false,
       blueMinesRevealed: false,
       redMinesRevealed: false,
-      logs: [],
+      logs: [{ msg: "🚀 Field fully purged & reset to Launch Mode! Ready for action.", time: new Date().toLocaleTimeString() }],
       sprintBlue: 0,
-      sprintRed: 0
+      sprintRed: 0,
+      sponsoredBabies: [],
+      totalRaised: 0,
+      landmarks: [],
+      version: "launch_v1"
     };
     
     setBluePos(initialBlue);
@@ -1878,9 +1986,12 @@ export default function App() {
     setMinesRevealed(false);
     setBlueMinesRevealed(false);
     setRedMinesRevealed(false);
-    setLogs([]);
+    setLogs([{ msg: "🚀 Field fully purged & reset to Launch Mode! Ready for action.", time: new Date().toLocaleTimeString() }]);
     setSprintBlue(0);
     setSprintRed(0);
+    setSponsoredBabies([]);
+    setTotalRaised(0);
+    setLandmarks([]);
 
     await updateFirebase(updates);
   };
@@ -1897,106 +2008,114 @@ export default function App() {
         <motion.div 
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          className="max-w-md w-full bg-[#fdfaf2] border-4 border-black rounded-3xl p-6 sm:p-10 text-center shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden"
+          className="max-w-md md:max-w-4xl w-full bg-[#fdfaf2] border-4 border-black rounded-3xl p-6 sm:p-10 text-center md:text-left shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden"
         >
           {/* Decorative design banners */}
           <div className="absolute top-0 right-0 w-24 h-6 bg-yellow-400 border-b-4 border-l-4 border-black -skew-x-12 transform translate-x-4 -translate-y-1" />
           <div className="absolute bottom-0 left-0 w-28 h-8 bg-rose-400 border-t-4 border-r-4 border-black -skew-x-12 transform -translate-x-4 translate-y-1" />
 
-          {/* Icon/Logo */}
-          <div className="text-6xl mb-4 sm:mb-6 select-none animate-pulse">👶🍼🛡️</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-10 lg:gap-12 items-stretch">
+            {/* Left Column: Branding, Gift, and Info */}
+            <div className="flex flex-col justify-center text-center md:text-left space-y-4">
+              {/* Icon/Logo */}
+              <div className="text-6xl mb-2 select-none animate-pulse">👶🍼🛡️</div>
 
-          <h1 className="text-3xl sm:text-4xl font-black text-black tracking-tight uppercase leading-none mb-2">
-            BABY PUSH!
-          </h1>
-          <p className="text-[10px] text-rose-500 font-extrabold uppercase tracking-widest font-mono mb-4">
-            🏆 Territory War Grid v2.0 🏆
-          </p>
+              <h1 className="text-3xl sm:text-4xl font-black text-black tracking-tight uppercase leading-none">
+                BABY PUSH!
+              </h1>
+              <p className="text-[10px] text-rose-500 font-extrabold uppercase tracking-widest font-mono">
+                🏆 Territory War Grid v2.0 🏆
+              </p>
 
-          <p className="text-xs sm:text-sm text-black/85 leading-relaxed font-semibold mb-6">
-            Drive smart strollers, paint the canvas with your signature team path, deploy strategic fortress barriers, and trigger slingshot launches in real-time.
-          </p>
+              <p className="text-xs sm:text-sm text-black/85 leading-relaxed font-semibold">
+                Drive smart strollers, paint the canvas with your signature team path, deploy strategic fortress barriers, and trigger slingshot launches in real-time.
+              </p>
 
-          <div className="bg-yellow-100 border-2 border-black p-4 rounded-2xl mb-6 text-left shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-            <h4 className="text-xs font-black uppercase text-black mb-1 flex items-center gap-1.5">
-              🎁 GIFT FOR NEW COMMANDERS
-            </h4>
-            <p className="text-[11px] font-bold text-black/80 leading-snug">
-              Every Commander gets <strong className="text-blue-600 font-black">100 Courtesy Tokens</strong> credited to their Google account on first login! No payment required.
-            </p>
-          </div>
-
-          <button 
-            onClick={handleLogin}
-            className="w-full py-4 bg-[#3b82f6] text-white font-black text-xs uppercase tracking-widest rounded-2xl border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer flex items-center justify-center gap-3 mb-4"
-          >
-            <span className="text-lg">⚙️</span>
-            <span>Sign In with Google Account</span>
-          </button>
-
-          <div className="my-4 flex items-center justify-center gap-2">
-            <div className="h-[2px] bg-black/10 flex-1" />
-            <span className="text-[9px] font-black uppercase text-black/55 tracking-wider font-mono">OR ACCESS BY EMAIL</span>
-            <div className="h-[2px] bg-black/10 flex-1" />
-          </div>
-
-          <form onSubmit={handleEmailLoginOrSignUp} className="space-y-3.5 text-left mb-4">
-            {isSignUp && (
-              <div>
-                <label className="text-[10px] font-black uppercase text-black/70 block mb-1">Commander Callsign *</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Maverick"
-                  value={signUpDisplayName}
-                  onChange={(e) => setSignUpDisplayName(e.target.value)}
-                  className="w-full bg-white border-2 border-black rounded-xl px-3 py-2 font-bold text-xs text-black placeholder-black/40 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:outline-none focus:translate-y-[1px] focus:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
-                  required
-                />
+              <div className="bg-yellow-101 border-2 border-black p-4 rounded-2xl text-left shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                <h4 className="text-xs font-black uppercase text-black mb-1 flex items-center gap-1.5">
+                  🎁 GIFT FOR NEW COMMANDERS
+                </h4>
+                <p className="text-[11px] font-bold text-black/80 leading-snug">
+                  Every Commander gets <strong className="text-blue-600 font-black">100 Courtesy Tokens</strong> credited to their Google account on first login! No payment required.
+                </p>
               </div>
-            )}
-            <div>
-              <label className="text-[10px] font-black uppercase text-black/70 block mb-1">Email Address *</label>
-              <input
-                type="email"
-                placeholder="commander@battlegrid.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-white border-2 border-black rounded-xl px-3 py-2 font-bold text-xs text-black placeholder-black/40 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:outline-none focus:translate-y-[1px] focus:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
-                required
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-black uppercase text-black/70 block mb-1">Secret Password *</label>
-              <input
-                type="password"
-                placeholder="••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-white border-2 border-black rounded-xl px-3 py-2 font-bold text-xs text-black placeholder-black/40 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:outline-none focus:translate-y-[1px] focus:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
-                required
-              />
             </div>
 
-            <button
-              type="submit"
-              className={`w-full py-3 ${isSignUp ? 'bg-emerald-400 hover:bg-emerald-500' : 'bg-amber-400 hover:bg-amber-500'} text-black font-black text-xs uppercase tracking-wider rounded-xl border-3 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer text-center block`}
-            >
-              {isSignUp ? '✨ DEPLOY ACCOUNT' : '🔑 AUTHORIZED SIGN IN'}
-            </button>
-
-            <div className="text-center pt-1.5">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSignUp(!isSignUp);
-                  setLoginError(null);
-                }}
-                className="text-[9px] text-[#3b82f6] hover:underline font-black uppercase tracking-widest cursor-pointer inline-block"
+            {/* Right Column: Actions and Forms */}
+            <div className="md:border-l-2 md:border-dashed md:border-black/15 md:pl-6 lg:pl-10 flex flex-col justify-center">
+              <button 
+                onClick={handleLogin}
+                className="w-full py-4 bg-[#3b82f6] text-white font-black text-xs uppercase tracking-widest rounded-2xl border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer flex items-center justify-center gap-3 mb-4"
               >
-                {isSignUp ? 'Already registered? Sign In Instead' : 'Create Custom Callsign & New Account'}
+                <span className="text-lg">⚙️</span>
+                <span>Sign In with Google Account</span>
               </button>
+
+              <div className="my-4 flex items-center justify-center gap-2">
+                <div className="h-[2px] bg-black/10 flex-1" />
+                <span className="text-[9px] font-black uppercase text-black/55 tracking-wider font-mono">OR ACCESS BY EMAIL</span>
+                <div className="h-[2px] bg-black/10 flex-1" />
+              </div>
+
+              <form onSubmit={handleEmailLoginOrSignUp} className="space-y-3.5 text-left mb-4">
+                {isSignUp && (
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-black/70 block mb-1">Commander Callsign *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Maverick"
+                      value={signUpDisplayName}
+                      onChange={(e) => setSignUpDisplayName(e.target.value)}
+                      className="w-full bg-white border-2 border-black rounded-xl px-3 py-2 font-bold text-xs text-black placeholder-black/40 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:outline-none focus:translate-y-[1px] focus:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
+                      required
+                    />
+                  </div>
+                )}
+                <div>
+                  <label className="text-[10px] font-black uppercase text-black/70 block mb-1">Email Address *</label>
+                  <input
+                    type="email"
+                    placeholder="commander@battlegrid.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full bg-white border-2 border-black rounded-xl px-3 py-2 font-bold text-xs text-black placeholder-black/40 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:outline-none focus:translate-y-[1px] focus:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase text-black/70 block mb-1">Secret Password *</label>
+                  <input
+                    type="password"
+                    placeholder="••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full bg-white border-2 border-black rounded-xl px-3 py-2 font-bold text-xs text-black placeholder-black/40 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:outline-none focus:translate-y-[1px] focus:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
+                    required
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className={`w-full py-3 ${isSignUp ? 'bg-emerald-400 hover:bg-emerald-500' : 'bg-amber-400 hover:bg-amber-500'} text-black font-black text-xs uppercase tracking-wider rounded-xl border-3 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer text-center block`}
+                >
+                  {isSignUp ? '✨ DEPLOY ACCOUNT' : '🔑 AUTHORIZED SIGN IN'}
+                </button>
+
+                <div className="text-center pt-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSignUp(!isSignUp);
+                      setLoginError(null);
+                    }}
+                    className="text-[9px] text-[#3b82f6] hover:underline font-black uppercase tracking-widest cursor-pointer inline-block"
+                  >
+                    {isSignUp ? 'Already registered? Sign In Instead' : 'Create Custom Callsign & New Account'}
+                  </button>
+                </div>
+              </form>
             </div>
-          </form>
+          </div>
 
           {loginError && (
             <div className="mt-6 bg-rose-50 border-2 border-rose-500 text-rose-950 p-4 rounded-xl text-left text-[11px] font-bold font-mono">
@@ -2004,7 +2123,7 @@ export default function App() {
               <p className="opacity-95 leading-normal">{loginError}</p>
               <div className="border-t border-rose-300 mt-2.5 pt-2 text-[10px] space-y-1 text-black/70">
                 <p>Ensure this domain is authorized under <strong className="font-extrabold">Authorized Domains</strong> in your Firebase Console:</p>
-                <code className="block bg-white p-1 rounded border border-rose-200 text-[10px] text-center select-all mt-1">{window.location.hostname}</code>
+                <code className="block bg-white p-1 rounded border border-[#ef4444]/35 text-[10px] text-center select-all mt-1">{window.location.hostname}</code>
               </div>
             </div>
           )}
@@ -3807,14 +3926,11 @@ export default function App() {
                 </div>
               ))}
             </div>
-            <div className="p-4 bg-yellow-101 border-t-3 border-black text-[9px] text-black/60 text-center uppercase tracking-wider font-black font-mono">
-              ★ 100% of proceeds go directly to humanitarian efforts ★
-            </div>
           </motion.div>
         </div>
       )}
 
-      {/* Buy Tokens Modal */}
+      {/* Buy Tokens Modal with official Ko-fi secure purchase system */}
       {isPurchaseModalOpen && (
         <div className="fixed inset-0 z-[400] flex items-start md:items-center justify-center bg-black/70 backdrop-blur-sm overflow-y-auto p-4 text-black py-8">
           <motion.div 
@@ -3823,23 +3939,20 @@ export default function App() {
             className="max-w-xl w-full bg-[#fdfaf2] border-4 border-black rounded-3xl p-6 sm:p-8 relative shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] my-auto"
           >
             {/* Header section closely matching theme */}
-            <div className="text-center mb-6 relative z-10">
+            <div className="text-center mb-5 relative z-10">
               <div className="inline-block relative">
-                <h2 className="text-2xl sm:text-3xl font-black text-black bg-yellow-300 px-6 py-2.5 rounded-2xl border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] uppercase -skew-x-1">
-                  Buy Tokens
+                <h2 className="text-2xl sm:text-3xl font-black text-black bg-yellow-300 px-6 py-2 rounded-2xl border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] uppercase -skew-x-1">
+                  Get Game Tokens
                 </h2>
               </div>
-              <p className="text-[10px] text-rose-600 font-black uppercase tracking-widest mt-3.5 font-mono">
-                ⭐ INSTANT DEMO REFILL STATION (100% FREE) ⭐
-              </p>
-              <p className="text-[11px] text-black/75 font-semibold mt-1.5 max-w-sm mx-auto leading-normal">
-                Because we are in full-scale battle testing phase, refilling tokens is completely free! Get credited immediately on Firestore.
+              <p className="text-[10px] text-rose-600 font-black uppercase tracking-widest mt-2.5 font-mono">
+                ⚡ SECURE REFILL STATION ⚡
               </p>
               
               {paymentError && (
                 <div className="max-w-md mx-auto mt-4 bg-red-50 border-2 border-red-500 text-red-900 p-4 rounded-xl text-left relative z-10 text-xs font-bold font-mono">
                   <div className="flex justify-between items-center mb-1">
-                    <span className="font-black text-[10px] uppercase text-red-650">⚠️ REFILL ERROR</span>
+                    <span className="font-black text-[10px] uppercase text-red-650">⚠️ FAILED REQUEST</span>
                     <button 
                       onClick={() => setPaymentError(null)} 
                       type="button" 
@@ -3854,7 +3967,7 @@ export default function App() {
 
               {paymentLoading && (
                 <div className="max-w-md mx-auto mt-4 bg-blue-50 border-2 border-blue-500 text-blue-900 px-4 py-2.5 rounded-xl text-center relative z-10 text-[10px] font-black uppercase tracking-wider animate-pulse flex items-center justify-center gap-2">
-                  <span className="animate-spin text-sm">🌀</span> Writing tokens to Firebase Firestore...
+                  <span className="animate-spin text-sm">🌀</span> Updating credits on Firestore...
                 </div>
               )}
             </div>
@@ -3870,85 +3983,188 @@ export default function App() {
             {/* Closing Button */}
             <button 
               onClick={() => setIsPurchaseModalOpen(false)}
-              className="absolute top-4 right-4 w-9 h-9 border-3 border-black rounded-lg bg-rose-500 text-white font-black hover:bg-rose-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 transition-all text-xs flex items-center justify-center cursor-pointer"
+              className="absolute top-4 right-4 w-9 h-9 border-3 border-black rounded-lg bg-rose-500 text-white font-black hover:bg-rose-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 transition-all text-xs flex items-center justify-center cursor-pointer z-[50]"
             >
               ✕
             </button>
 
-            {/* Quick Packages Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 relative z-10 mb-6">
-              {[
-                { amount: 100, label: "Starter", color: "bg-rose-300", desc: "For direct moves" },
-                { amount: 500, label: "Commander", color: "bg-blue-300", desc: "Highly popular choice", tag: "POPULAR" },
-                { amount: 1000, label: "Legend", color: "bg-purple-300", desc: "Ultimate map domination" }
-              ].map((pkg, idx) => (
-                <div 
-                  key={idx}
-                  className="bg-white rounded-2xl p-4 border-3 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col justify-between relative text-center"
-                >
-                  {pkg.tag && (
-                    <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2 py-0.5 bg-yellow-300 text-black border border-black rounded text-[7px] font-black uppercase tracking-wider">
-                      {pkg.tag}
-                    </div>
-                  )}
-
-                  <div>
-                    <h4 className="text-xs font-black uppercase tracking-tight text-black">{pkg.label}</h4>
-                    <div className="text-xl font-extrabold text-black my-1 font-sans">{pkg.amount} Tokens</div>
-                    <p className="text-[9px] text-black/60 font-bold leading-none mb-3 font-sans">{pkg.desc}</p>
-                  </div>
-
-                  <button 
-                    onClick={() => buyTokens(pkg.amount)}
-                    className="w-full py-1.5 bg-yellow-300 hover:bg-yellow-400 text-black font-black text-[10px] border-2 border-black rounded-xl hover:-translate-y-0.5 active:translate-y-0.5 transition-all cursor-pointer uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]"
-                  >
-                    Get Free &rarr;
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            {/* Custom Input Box Block */}
-            <div className="bg-white border-3 border-black rounded-2xl p-4 relative z-10 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-center">
-              <h4 className="text-xs font-black uppercase tracking-wider text-black mb-1.5">
-                💎 Grab Custom Token Pack
-              </h4>
-              <p className="text-[10px] text-black/60 font-medium mb-3">
-                Need more? Enter any custom number of tokens to acquire instantly.
+            <div className="relative z-10 space-y-4">
+              <p className="text-[11px] text-black/75 font-semibold text-center leading-normal max-w-sm mx-auto">
+                Fuel the developers, keep match hosts online, and fund new feature updates! Direct donations to our official Ko-fi account are instantly credited.
               </p>
 
-              <div className="flex items-center justify-center gap-3">
-                <input 
-                  type="number"
-                  min="1"
-                  max="50000"
-                  value={customTokenAmount}
-                  onChange={(e) => setCustomTokenAmount(e.target.value)}
-                  className="bg-yellow-50 border-2 border-black py-2 px-3 rounded-xl font-black text-center text-sm w-36 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] outline-none text-black"
-                  placeholder="250"
-                />
-                
-                <button
-                  type="button"
-                  onClick={() => {
-                    const parsed = parseInt(customTokenAmount);
-                    if (isNaN(parsed) || parsed <= 0) {
-                      setPaymentError("Please enter a valid positive number of tokens.");
-                      return;
-                    }
-                    buyTokens(parsed);
-                  }}
-                  className="px-4 py-2.5 bg-green-300 hover:bg-green-400 text-black text-[10px] font-black uppercase tracking-widest rounded-xl border-2 border-black hover:-translate-y-0.5 active:translate-y-0.5 transition-all cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-[0px_0px_0px_0px_rgba(0,0,0,1)]"
+              {/* Ko-fi Rate Info & Checkout Button */}
+              <div className="bg-white border-3 border-black rounded-2xl p-4 sm:p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-center space-y-4">
+                <div className="bg-rose-50 border border-rose-200/60 rounded-xl p-3.5 text-center space-y-1">
+                  <div className="text-[11px] font-black uppercase text-[#FF5E5B] tracking-wide">
+                    💝 Support Conversion Rate
+                  </div>
+                  <div className="text-xl font-black text-black font-sans leading-none my-1 font-mono">
+                    $1.00 USD = 50 tokens
+                  </div>
+                  <p className="text-[9px] text-black/65 font-medium leading-normal max-w-sm mx-auto">
+                    Support any amount you wish! The server automatically processes your donation value into game credits (e.g., <strong className="text-rose-600">1,000 Tokens</strong> on a $20 support, or <strong className="text-rose-600 font-extrabold">2,500 Tokens</strong> on a $50 support!).
+                  </p>
+                </div>
+
+                <a 
+                  href="https://ko-fi.com/s/848c7dd1b4"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-3.5 text-center bg-[#FF5E5B] hover:bg-[#ff4a47] text-white font-black text-[11px] border-3 border-black rounded-xl hover:-translate-y-0.5 active:translate-y-0.5 transition-all block uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]"
                 >
-                  Claim Tokens (FREE)
-                </button>
+                  ☕ SUPPORT SEAMLESSLY ON KO-FI &rarr;
+                </a>
+              </div>
+
+              {/* Secure Claim Station */}
+              <div className="bg-yellow-101/50 border-3 border-black rounded-2xl p-4 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+                <h4 className="text-[11px] font-black uppercase tracking-wider text-black mb-1 flex items-center justify-center gap-1.5">
+                  🛡️ Secure Auto-Verification & Instantly Credit Any Custom Amount
+                </h4>
+                <p className="text-[9px] text-black/65 font-medium mb-3.5 text-center leading-relaxed">
+                  Support any amount via the checkout button. Once paid, simply enter your <strong>Receipt / Transaction ID</strong> below to claim your tokens immediately!
+                </p>
+
+                <div className="space-y-3">
+                  <div className="bg-white border-2 border-black p-3.5 rounded-xl text-left shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">
+                    <label className="text-[8.5px] font-black uppercase tracking-wide text-black/75 block mb-1.5 font-sans">
+                      Enter Ko-fi Transaction ID / Receipt Code
+                    </label>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input 
+                        type="text"
+                        value={kofiTxId}
+                        onChange={(e) => setKofiTxId(e.target.value)}
+                        className="flex-1 bg-white border-2 border-black py-2 px-3 rounded-lg font-bold text-xs outline-none text-black placeholder:text-black/30 animate-pulse-once"
+                        placeholder="e.g. kofi-1a2b3c (as shown on your email receipt)"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => creditKofiDonation(0, "", kofiTxId)}
+                        disabled={paymentLoading || !kofiTxId.trim()}
+                        className={`sm:w-auto px-5 py-2 bg-[#FF5E5B] text-white font-black border-2 border-black rounded-lg text-xs uppercase cursor-pointer text-center shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 transition-all flex items-center justify-center gap-1.5 min-w-[140px] ${(!kofiTxId.trim() || paymentLoading) ? 'opacity-55 cursor-not-allowed' : ''}`}
+                      >
+                        {paymentLoading ? (
+                          <>🌀 Verifying...</>
+                        ) : (
+                          <>☕ Claim Now</>
+                        )}
+                      </button>
+                    </div>
+                    
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-2 pt-2 border-t border-dashed border-black/10">
+                      <p className="text-[7.5px] text-black/50 font-bold uppercase tracking-wide">
+                        🔒 Validated via official Ko-fi Webhook. Prevents double-claiming.
+                      </p>
+                      
+                      <button 
+                        type="button"
+                        onClick={() => setShowKofiGuide(!showKofiGuide)}
+                        className="text-[8px] font-black text-rose-600 hover:text-rose-700 underline cursor-pointer uppercase flex items-center gap-1"
+                      >
+                        {showKofiGuide ? "💡 Hide Help Guide" : "💡 Where is my Receipt Code?"}
+                      </button>
+                    </div>
+
+                    <AnimatePresence>
+                      {showKofiGuide && (
+                        <motion.div 
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="bg-stone-50 border-2 border-black rounded-xl p-3 text-left space-y-3 mt-3 overflow-hidden"
+                        >
+                          <h5 className="text-[9px] font-black uppercase text-black border-b border-black/10 pb-1 flex items-center gap-1">
+                            📋 Visual Guide: How to Get Your Support Key
+                          </h5>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[8.5px]">
+                            {/* Method A: Email */}
+                            <div className="bg-white border-1.5 border-black/80 rounded-lg p-2.5 flex flex-col justify-between">
+                              <div>
+                                <div className="flex items-center gap-1 mb-1.5 text-black font-black uppercase leading-none">
+                                  <span className="bg-blue-105 text-blue-700 font-extrabold px-1 rounded text-[7px]">METHOD A</span>
+                                  <span>Email Receipt</span>
+                                </div>
+                                <p className="text-black/60 mb-2 font-medium text-[8px] leading-tight">
+                                  Check your inbox for a message from <strong>Ko-fi Support</strong>. The code is highlighted directly on the letter layout.
+                                </p>
+                              </div>
+                              
+                              {/* Realistic Email Box Mock */}
+                              <div className="bg-stone-100/80 border border-dashed border-black/20 rounded-md p-2 font-mono text-[7px] text-black/85 space-y-1 relative overflow-hidden">
+                                <div className="border-b border-black/10 pb-1 mb-1 flex justify-between text-black/50 font-sans font-black text-[6px]">
+                                  <span>From: Ko-fi Support ☕</span>
+                                  <span>Subject: Shop Order...</span>
+                                </div>
+                                <p className="font-sans font-extrabold text-black mb-1 text-[7.5px]">Thanks for your support!</p>
+                                <div className="bg-yellow-101 border-l-2 border-[#FF5E5B] px-1 py-0.5 text-black flex justify-between font-bold text-[7px]">
+                                  <span>Receipt:</span>
+                                  <span className="text-rose-600 tracking-wider font-extrabold select-all animate-pulse">kofi-848c7dd1b4</span>
+                                </div>
+                                <div className="text-[6px] text-black/45 pt-1 font-sans">
+                                  Order Total: $20.00 USD
+                                </div>
+                                
+                                <div className="absolute top-4 right-1 transform rotate-12 bg-red-100 text-[#FF5E5B] text-[6px] font-black px-1 border border-[#FF5E5B] rounded uppercase">
+                                  Copy ID
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Method B: Checkout Screen */}
+                            <div className="bg-white border-1.5 border-black/80 rounded-lg p-2.5 flex flex-col justify-between">
+                              <div>
+                                <div className="flex items-center gap-1 mb-1.5 text-black font-black uppercase leading-none">
+                                  <span className="bg-purple-105 text-purple-700 font-extrabold px-1 rounded text-[7px]">METHOD B</span>
+                                  <span>Payment Success Screen</span>
+                                </div>
+                                <p className="text-black/60 mb-2 font-medium text-[8px] leading-tight">
+                                  Right after checking out, the "Thank you" screen shows your receipt details before leaving.
+                                </p>
+                              </div>
+
+                              {/* Realistic Success Banner Mock */}
+                              <div className="bg-emerald-50/50 border border-dashed border-black/20 rounded-md p-2 font-mono text-[7px] text-black/85 text-center relative overflow-hidden flex flex-col justify-center items-center">
+                                <div className="text-emerald-600 font-sans font-black text-[8px] mb-0.5">🎉 Payment Complete!</div>
+                                <p className="font-sans font-bold text-black/60 mb-1 leading-none text-[6.5px]">Backed: BabyPush Special</p>
+                                
+                                <div className="my-1 py-0.5 px-1.5 bg-yellow-101 border border-black/80 rounded inline-block text-[7px] font-black text-black">
+                                  Receipt: <span className="text-rose-600 tracking-wider font-extrabold">kofi-848c7dd1b4</span>
+                                </div>
+                                
+                                <p className="text-[5.5px] text-black/40 font-sans mt-0.5">Keep this ID to claim your credits</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-amber-105/20 border border-dashed border-yellow-400 p-2.5 rounded-lg text-[8.5px] leading-relaxed text-black/75 font-semibold font-sans">
+                            💡 <strong className="text-amber-800">Friendly Tip:</strong> Our server matches your Transaction ID against real-time webhooks sent from Ko-fi's secure servers! If you just paid, please allow <strong>10 to 30 seconds</strong> for the payment to register fully.
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </div>
+
+                <div className="text-center mt-3">
+                  <a
+                    href="https://ko-fi.com/s/848c7dd1b4"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-[9px] text-[#FF5E5B] hover:text-[#d43f3c] font-black uppercase tracking-widest bg-white border-2 border-black py-1 px-3 rounded-lg shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+                  >
+                    ☕ BUY VIA KO-FI SECURE CHECKOUT &rarr;
+                  </a>
+                </div>
               </div>
             </div>
 
             <div className="text-center mt-5">
               <button 
                 onClick={() => setIsPurchaseModalOpen(false)}
-                className="text-black/50 hover:text-black font-black text-[10px] uppercase tracking-wider underline cursor-pointer"
+                className="text-black/50 hover:text-black font-black text-[9px] uppercase tracking-wider underline cursor-pointer"
               >
                 Close & Return to Battle
               </button>
