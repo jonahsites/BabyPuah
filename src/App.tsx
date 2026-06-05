@@ -3310,66 +3310,85 @@ export default function App() {
       {/* FIXED BOTTOM HUD (DESKTOP) */}
       <div className="hidden md:flex fixed bottom-0 left-0 w-full h-24 bg-[#fcfaf4] border-t-4 border-black items-center justify-between px-6 z-50 shadow-[0_-5px_0px_0px_rgba(0,0,0,1)] text-black">
         
-        {/* Left Column: Faction Command Hub */}
-        {userRole !== 'none' && (
-          <div className="flex items-center gap-2 bg-[#fdfaf2] border-2 border-black px-4 py-2 rounded-xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] select-none font-mono">
-            <span className="text-[10px] sm:text-xs font-black uppercase text-black select-none">🍼 HUB:</span>
-            
-            {/* Blue Baby control */}
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedBabyId('blue');
-                addLog("Switching control to Blue Baby");
-              }}
-              className={`px-2.5 py-1 rounded-lg border border-black cursor-pointer uppercase font-black text-[8.5px] sm:text-[10px] tracking-tight transition-all ${
-                selectedBabyId === 'blue' 
-                  ? 'bg-blue-600 text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' 
-                  : 'bg-white text-blue-600 hover:bg-blue-50'
-              }`}
-            >
-              💙 Blue Baby
-            </button>
-            
-            {/* Red Baby control */}
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedBabyId('red');
-                addLog("Switching control to Red Baby");
-              }}
-              className={`px-2.5 py-1 rounded-lg border border-black cursor-pointer uppercase font-black text-[8.5px] sm:text-[10px] tracking-tight transition-all ${
-                selectedBabyId === 'red' 
-                  ? 'bg-red-600 text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' 
-                  : 'bg-white text-red-600 hover:bg-red-50'
-              }`}
-            >
-              ❤️ Red Baby
-            </button>
-
-            {/* Sponsored Babies List trigger */}
-            <button
-              type="button"
-              onClick={() => setIsSponsorListModalOpen(true)}
-              className="px-2.5 py-1 bg-orange-100 text-black rounded-lg border border-black cursor-pointer uppercase font-black text-[8.5px] sm:text-[10px] tracking-wider hover:opacity-90 active:translate-y-0.5 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] active:shadow-none"
-            >
-              👶 Sponsored Babies
-            </button>
-            
+        {/* Left Section: Token Wallet & Faction Command Hub */}
+        <div className="flex items-center gap-3">
+          {/* Neobrutalist Token Wallet Card */}
+          <div className="flex items-center gap-2.5 bg-emerald-50 border-2 border-black px-3.5 py-1.5 rounded-xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] select-none">
+            <div className="flex flex-col text-left">
+              <span className="text-[7.5px] font-black uppercase text-[#047857] tracking-wider">Your Tokens</span>
+              <span className="text-xs sm:text-sm font-black text-black font-mono leading-none mt-0.5 whitespace-nowrap">
+                🪙 {profile?.currentTokens ?? 0}
+              </span>
+            </div>
             <button 
-              onClick={() => setActiveModal({ side: 'blue', type: 'landmark' })}
-              className="px-2.5 py-1 bg-blue-105 border border-black rounded-lg text-black font-black text-[8.5px] sm:text-[10px] tracking-wider hover:opacity-90 active:translate-y-0.5 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] active:shadow-none cursor-pointer"
+              onClick={() => setIsPurchaseModalOpen(true)}
+              className="px-2 py-1 bg-yellow-300 hover:bg-yellow-400 text-black border-2 border-black text-[8px] font-black uppercase rounded-lg shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] active:translate-y-[1px] active:shadow-none transition-all cursor-pointer font-sans"
+              title="Buy more tokens to support the server & charity!"
             >
-              🏰 MARK B
-            </button>
-            <button 
-              onClick={() => setActiveModal({ side: 'red', type: 'landmark' })}
-              className="px-2.5 py-1 bg-red-105 border border-black rounded-lg text-black font-black text-[8.5px] sm:text-[10px] tracking-wider hover:opacity-90 active:translate-y-0.5 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] active:shadow-none cursor-pointer"
-            >
-              🏰 MARK R
+              + ADD
             </button>
           </div>
-        )}
+
+          {userRole !== 'none' && (
+            <div className="flex items-center gap-2 bg-[#fdfaf2] border-2 border-black px-4 py-2 rounded-xl shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] select-none font-mono">
+              <span className="text-[10px] sm:text-xs font-black uppercase text-black select-none">🍼 HUB:</span>
+              
+              {/* Blue Baby control */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedBabyId('blue');
+                  addLog("Switching control to Blue Baby");
+                }}
+                className={`px-2.5 py-1 rounded-lg border border-black cursor-pointer uppercase font-black text-[8.5px] sm:text-[10px] tracking-tight transition-all ${
+                  selectedBabyId === 'blue' 
+                    ? 'bg-blue-600 text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' 
+                    : 'bg-white text-blue-600 hover:bg-blue-50'
+                }`}
+              >
+                💙 Blue Baby
+              </button>
+              
+              {/* Red Baby control */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedBabyId('red');
+                  addLog("Switching control to Red Baby");
+                }}
+                className={`px-2.5 py-1 rounded-lg border border-black cursor-pointer uppercase font-black text-[8.5px] sm:text-[10px] tracking-tight transition-all ${
+                  selectedBabyId === 'red' 
+                    ? 'bg-red-600 text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' 
+                    : 'bg-white text-red-600 hover:bg-red-50'
+                }`}
+              >
+                ❤️ Red Baby
+              </button>
+
+              {/* Sponsored Babies List trigger */}
+              <button
+                type="button"
+                onClick={() => setIsSponsorListModalOpen(true)}
+                className="px-2.5 py-1 bg-orange-100 text-black rounded-lg border border-black cursor-pointer uppercase font-black text-[8.5px] sm:text-[10px] tracking-wider hover:opacity-90 active:translate-y-0.5 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] active:shadow-none"
+              >
+                👶 Sponsored Babies
+              </button>
+              
+              <button 
+                onClick={() => setActiveModal({ side: 'blue', type: 'landmark' })}
+                className="px-2.5 py-1 bg-blue-105 border border-black rounded-lg text-black font-black text-[8.5px] sm:text-[10px] tracking-wider hover:opacity-90 active:translate-y-0.5 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] active:shadow-none cursor-pointer"
+              >
+                🏰 MARK B
+              </button>
+              <button 
+                onClick={() => setActiveModal({ side: 'red', type: 'landmark' })}
+                className="px-2.5 py-1 bg-red-105 border border-black rounded-lg text-black font-black text-[8.5px] sm:text-[10px] tracking-wider hover:opacity-90 active:translate-y-0.5 shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] active:shadow-none cursor-pointer"
+              >
+                🏰 MARK R
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Middle Column: Unified 8 Abilities Deck targeting the currently selected unit */}
         <div className={`flex items-center gap-1.5 transition-all ${!canControl(selectedBabyId) ? 'opacity-30 pointer-events-none grayscale' : ''}`}>
