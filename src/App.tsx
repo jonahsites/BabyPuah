@@ -10,6 +10,7 @@ import { db, auth } from "./lib/firebase";
 import { doc, onSnapshot, updateDoc, setDoc, getDoc, serverTimestamp, increment, collection, query, orderBy, limit, getDocs, arrayUnion } from "firebase/firestore";
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, User as FirebaseUser, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import SlingshotGame from "./components/SlingshotGame";
+import { PayPalButton } from "./components/PayPalButton";
 
 const GAME_ID = "global";
 
@@ -115,11 +116,13 @@ export default function App() {
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [paymentLoading, setPaymentLoading] = useState<boolean>(false);
   const [customTokenAmount, setCustomTokenAmount] = useState<string>("250");
-  const [activePurchaseTab, setActivePurchaseTab] = useState<'kofi' | 'sandbox'>('kofi');
+  const [activePurchaseTab, setActivePurchaseTab] = useState<'paypal' | 'kofi'>('paypal');
   const [kofiName, setKofiName] = useState("");
   const [kofiTxId, setKofiTxId] = useState("");
   const [kofiAmount, setKofiAmount] = useState<string>("20");
   const [showKofiGuide, setShowKofiGuide] = useState(false);
+  const [paypalTxId, setPaypalTxId] = useState("");
+  const [showPaypalGuide, setShowPaypalGuide] = useState(false);
   
   // Fetch Stripe Configuration Status on load
   useEffect(() => {
@@ -294,6 +297,53 @@ export default function App() {
     }
   };
 
+  const creditPaypalDonation = async (transactionId: string) => {
+    if (!user) {
+      setPaymentError("You must be logged in to claim tokens.");
+      return;
+    }
+    const trimmedTxId = transactionId.trim();
+    if (!trimmedTxId) {
+      setPaymentError("Please enter your PayPal Transaction ID or Order Code to claim.");
+      return;
+    }
+
+    setPaymentLoading(true);
+    setPaymentError(null);
+    setPaymentSuccessMessage(null);
+
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch("/api/claim-paypal", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`
+        },
+        body: JSON.stringify({ transactionId: trimmedTxId })
+      });
+
+      if (!response.ok) {
+        let errMsg = "Claim failed";
+        try {
+          const errData = await response.json();
+          errMsg = errData.message || errData.error || errMsg;
+        } catch (_) {}
+        throw new Error(errMsg);
+      }
+
+      const data = await response.json();
+      setPaymentSuccessMessage(`🎉 ${data.message} +${data.tokensAdded} Tokens credited successfully! 🚀`);
+      setIsPurchaseModalOpen(false);
+      setPaypalTxId("");
+    } catch (err: any) {
+      console.error("Secure claim-paypal failed:", err);
+      setPaymentError(err.message || String(err));
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
   // Sync Auth and User Profile
   useEffect(() => {
     let unsubUser: (() => void) | null = null;
@@ -317,14 +367,14 @@ export default function App() {
                 displayName: tempName,
                 photoURL: data.photoURL || u.photoURL || "https://api.dicebear.com/7.x/bottts/svg?seed=" + encodeURIComponent(tempName),
                 totalDonated: 0,
-                currentTokens: 100, // Reset to standard starting tokens
+                currentTokens: 5, // Reset to standard starting tokens
                 kofiClaims: [],
                 launchRef: "launch_v1",
                 updatedAt: serverTimestamp()
               };
               setDoc(userRef, cleanProfile);
               setProfile(cleanProfile as any);
-              setPaymentSuccessMessage("Welcome to the Official Launch of Baby Push! Dev mode is complete and accounts have been reset. Enjoy your 100 launching free tokens! 🍼🛡️");
+              setPaymentSuccessMessage("Welcome to the Official Launch of Baby Push! Dev mode is complete and accounts have been reset. Enjoy your 5 launching free tokens! 🍼🛡️");
             } else {
               setProfile(data as any);
             }
@@ -335,14 +385,14 @@ export default function App() {
               displayName: tempName,
               photoURL: u.photoURL || "https://api.dicebear.com/7.x/bottts/svg?seed=" + encodeURIComponent(tempName),
               totalDonated: 0,
-              currentTokens: 100,
+              currentTokens: 5,
               kofiClaims: [],
               launchRef: "launch_v1",
               updatedAt: serverTimestamp()
             };
             setDoc(userRef, newProfile);
             setProfile(newProfile as any);
-            setPaymentSuccessMessage("Welcome to the Official Launch of Baby Push! You have been credited with 100 courtesy tokens as a welcome gift! Go control the strollers or deploy tactical support! 🍼🛡️");
+            setPaymentSuccessMessage("Welcome to the Official Launch of Baby Push! You have been credited with 5 courtesy tokens as a welcome gift! Go control the strollers or deploy tactical support! 🍼🛡️");
           }
         }, (err: any) => {
           console.error("Error subscribing to user profile:", err);
@@ -2036,7 +2086,7 @@ export default function App() {
                   🎁 GIFT FOR NEW COMMANDERS
                 </h4>
                 <p className="text-[11px] font-bold text-black/80 leading-snug">
-                  Every Commander gets <strong className="text-blue-600 font-black">100 Courtesy Tokens</strong> credited to their Google account on first login! No payment required.
+                  Every Commander gets <strong className="text-blue-600 font-black">5 Courtesy Tokens</strong> credited to their Google account on first login! No payment required.
                 </p>
               </div>
             </div>
@@ -4009,188 +4059,246 @@ export default function App() {
 
             <div className="relative z-10 space-y-4">
               <p className="text-[11px] text-black/75 font-semibold text-center leading-normal max-w-sm mx-auto">
-                Fuel the developers, keep match hosts online, and fund new feature updates! Direct donations to our official Ko-fi account are instantly credited.
+                Fuel the developers, keep match hosts online, and fund new feature updates! Direct donations are instantly credited.
               </p>
 
-              {/* Ko-fi Rate Info & Checkout Button */}
-              <div className="bg-white border-3 border-black rounded-2xl p-4 sm:p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-center space-y-4">
-                <div className="bg-rose-50 border border-rose-200/60 rounded-xl p-3.5 text-center space-y-1">
-                  <div className="text-[11px] font-black uppercase text-[#FF5E5B] tracking-wide">
-                    💝 Support Conversion Rate
-                  </div>
-                  <div className="text-xl font-black text-black font-sans leading-none my-1 font-mono">
-                    $1.00 USD = 1 Token
-                  </div>
-                  <p className="text-[9px] text-black/65 font-medium leading-normal max-w-sm mx-auto">
-                    Support any amount you wish! The server automatically processes your donation value into game credits (e.g., <strong className="text-rose-600">20 Tokens</strong> on a $20 support, or <strong className="text-rose-600 font-extrabold">50 Tokens</strong> on a $50 support).
-                  </p>
-                </div>
-
-                <a 
-                  href="https://ko-fi.com/s/848c7dd1b4"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full py-3.5 text-center bg-[#FF5E5B] hover:bg-[#ff4a47] text-white font-black text-[11px] border-3 border-black rounded-xl hover:-translate-y-0.5 active:translate-y-0.5 transition-all block uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]"
+              {/* Purchase Method Toggles */}
+              <div className="flex border-2 border-black rounded-xl overflow-hidden bg-stone-100 p-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                <button
+                  type="button"
+                  onClick={() => setActivePurchaseTab('paypal')}
+                  className={`flex-1 py-1.5 text-center text-[10px] font-black uppercase tracking-wider rounded-lg transition-all ${
+                    activePurchaseTab === 'paypal'
+                      ? 'bg-yellow-300 text-black border-2 border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] font-black'
+                      : 'text-black/60 hover:text-black font-black'
+                  }`}
                 >
-                  ☕ SUPPORT SEAMLESSLY ON KO-FI &rarr;
-                </a>
+                  💳 PayPal / Venmo (New)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActivePurchaseTab('kofi')}
+                  className={`flex-1 py-1.5 text-center text-[10px] font-black uppercase tracking-wider rounded-lg transition-all ${
+                    activePurchaseTab === 'kofi'
+                      ? 'bg-[#FF5E5B] text-white border-2 border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] font-black'
+                      : 'text-black/60 hover:text-black font-black'
+                  }`}
+                >
+                  ☕ Ko-fi Checkout
+                </button>
               </div>
 
-              {/* Secure Claim Station */}
-              <div className="bg-yellow-101/50 border-3 border-black rounded-2xl p-4 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
-                <h4 className="text-[11px] font-black uppercase tracking-wider text-black mb-1 flex items-center justify-center gap-1.5">
-                  🛡️ Secure Auto-Verification & Instantly Credit Any Custom Amount
-                </h4>
-                <p className="text-[9px] text-black/65 font-medium mb-3.5 text-center leading-relaxed">
-                  Support any amount via the checkout button. Once paid, simply enter your <strong>Receipt / Transaction ID</strong> below to claim your tokens immediately!
-                </p>
-
-                <div className="space-y-3">
-                  <div className="bg-white border-2 border-black p-3.5 rounded-xl text-left shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">
-                    <label className="text-[8.5px] font-black uppercase tracking-wide text-black/75 block mb-1.5 font-sans">
-                      Enter Ko-fi Transaction ID / Receipt Code
-                    </label>
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <input 
-                        type="text"
-                        value={kofiTxId}
-                        onChange={(e) => setKofiTxId(e.target.value)}
-                        className="flex-1 bg-white border-2 border-black py-2 px-3 rounded-lg font-bold text-xs outline-none text-black placeholder:text-black/30 animate-pulse-once"
-                        placeholder="e.g. kofi-1a2b3c (as shown on your email receipt)"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => creditKofiDonation(0, "", kofiTxId)}
-                        disabled={paymentLoading || !kofiTxId.trim()}
-                        className={`sm:w-auto px-5 py-2 bg-[#FF5E5B] text-white font-black border-2 border-black rounded-lg text-xs uppercase cursor-pointer text-center shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 transition-all flex items-center justify-center gap-1.5 min-w-[140px] ${(!kofiTxId.trim() || paymentLoading) ? 'opacity-55 cursor-not-allowed' : ''}`}
-                      >
-                        {paymentLoading ? (
-                          <>🌀 Verifying...</>
-                        ) : (
-                          <>☕ Claim Now</>
-                        )}
-                      </button>
-                    </div>
-                    
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-2 pt-2 border-t border-dashed border-black/10">
-                      <p className="text-[7.5px] text-black/50 font-bold uppercase tracking-wide">
-                        🔒 Validated via official Ko-fi Webhook. Prevents double-claiming.
+              {activePurchaseTab === 'paypal' ? (
+                <>
+                  {/* PayPal Rate Info & Checkout Button */}
+                  <div className="bg-white border-3 border-black rounded-2xl p-4 sm:p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-center space-y-4">
+                    <div className="bg-yellow-50 border border-yellow-200/60 rounded-xl p-3.5 text-center space-y-1">
+                      <div className="text-[11px] font-black uppercase text-yellow-800 tracking-wide">
+                        💝 Support Conversion Rate
+                      </div>
+                      <div className="text-xl font-black text-black font-sans leading-none my-1 font-mono">
+                        $1.00 USD = 1 Token
+                      </div>
+                      <p className="text-[9px] text-black/65 font-medium leading-normal max-w-sm mx-auto">
+                        Support any amount you wish! The server automatically processes your support value into game tokens instantly (e.g. <strong className="text-yellow-600 font-extrabold">$20 = 20 Tokens</strong>).
                       </p>
-                      
-                      <button 
-                        type="button"
-                        onClick={() => setShowKofiGuide(!showKofiGuide)}
-                        className="text-[8px] font-black text-rose-600 hover:text-rose-700 underline cursor-pointer uppercase flex items-center gap-1"
-                      >
-                        {showKofiGuide ? "💡 Hide Guide" : "💡 How does this work? (Important Payment/Code Guide)"}
-                      </button>
                     </div>
 
-                    <AnimatePresence>
-                      {showKofiGuide && (
-                        <motion.div 
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: "auto" }}
-                          exit={{ opacity: 0, height: 0 }}
-                          className="bg-stone-50 border-2 border-black rounded-xl p-3 text-left space-y-3 mt-3 overflow-hidden"
-                        >
-                          {/* 1. Payment Explanation (Charity/Race Connection) FIRST */}
-                          <div className="bg-rose-50 border-2 border-rose-300 rounded-xl p-3 space-y-1.5">
-                            <h5 className="text-[9.5px] font-black uppercase text-rose-750 flex items-center gap-1">
-                              ❤️ 1. Your Support is a Direct Donation to the Server & Charity
-                            </h5>
-                            <p className="text-[8.5px] text-black/80 font-bold leading-relaxed">
-                              When you click the checkout button above, you are making a <strong className="text-rose-700 font-extrabold font-sans">direct donation</strong>. 100% of these contributions are used for charity-focused server upkeep, hosting costs, battle grid database bandwidth, and keeping the real-time multiplayer baby race alive!
-                            </p>
-                            <p className="text-[8.5px] text-black/80 font-bold leading-relaxed">
-                              To say thanks, our automated system instantly awards you with <strong className="text-rose-750 font-extrabold font-sans">1 Game Token for every $1.00 USD donated</strong> (e.g., $10 donation = 10 Tokens, $50 donation = 50 Tokens). You can use these tokens in-game to deploy barriers, boost stroller speed, and trigger slingshots on the live board!
-                            </p>
-                          </div>
-
-                          <h5 className="text-[9px] font-black uppercase text-black border-b border-black/10 pt-1 pb-1 flex items-center gap-1">
-                            📋 2. How to Retrieve Your Receipt Code to Claim Your Tokens
-                          </h5>
-                          
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[8.5px]">
-                            {/* Method A: Email */}
-                            <div className="bg-white border-1.5 border-black/80 rounded-lg p-2.5 flex flex-col justify-between">
-                              <div>
-                                <div className="flex items-center gap-1 mb-1.5 text-black font-black uppercase leading-none">
-                                  <span className="bg-blue-105 text-blue-700 font-extrabold px-1 rounded text-[7px]">METHOD A</span>
-                                  <span>Email Receipt</span>
-                                </div>
-                                <p className="text-black/60 mb-2 font-medium text-[8px] leading-tight">
-                                  Check your inbox for a message from <strong>Ko-fi Support</strong>. The code is highlighted directly on the letter layout.
-                                </p>
-                              </div>
-                              
-                              {/* Realistic Email Box Mock */}
-                              <div className="bg-stone-100/80 border border-dashed border-black/20 rounded-md p-2 font-mono text-[7px] text-black/85 space-y-1 relative overflow-hidden">
-                                <div className="border-b border-black/10 pb-1 mb-1 flex justify-between text-black/50 font-sans font-black text-[6px]">
-                                  <span>From: Ko-fi Support ☕</span>
-                                  <span>Subject: Shop Order...</span>
-                                </div>
-                                <p className="font-sans font-extrabold text-black mb-1 text-[7.5px]">Thanks for your support!</p>
-                                <div className="bg-yellow-101 border-l-2 border-[#FF5E5B] px-1 py-0.5 text-black flex justify-between font-bold text-[7px]">
-                                  <span>Receipt:</span>
-                                  <span className="text-rose-600 tracking-wider font-extrabold select-all animate-pulse">kofi-848c7dd1b4</span>
-                                </div>
-                                <div className="text-[6px] text-black/45 pt-1 font-sans">
-                                  Order Total: $20.00 USD
-                                </div>
-                                
-                                <div className="absolute top-4 right-1 transform rotate-12 bg-red-100 text-[#FF5E5B] text-[6px] font-black px-1 border border-[#FF5E5B] rounded uppercase">
-                                  Copy ID
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Method B: Checkout Screen */}
-                            <div className="bg-white border-1.5 border-black/80 rounded-lg p-2.5 flex flex-col justify-between">
-                              <div>
-                                <div className="flex items-center gap-1 mb-1.5 text-black font-black uppercase leading-none">
-                                  <span className="bg-purple-105 text-purple-700 font-extrabold px-1 rounded text-[7px]">METHOD B</span>
-                                  <span>Payment Success Screen</span>
-                                </div>
-                                <p className="text-black/60 mb-2 font-medium text-[8px] leading-tight font-sans">
-                                  Right after checking out, the "Thank you" screen shows your receipt details before leaving.
-                                </p>
-                              </div>
-
-                              {/* Realistic Success Banner Mock */}
-                              <div className="bg-emerald-50/50 border border-dashed border-[#10b981]/25 rounded-md p-2 font-mono text-[7px] text-black/85 text-center relative overflow-hidden flex flex-col justify-center items-center">
-                                <div className="text-emerald-600 font-sans font-black text-[8px] mb-0.5">🎉 Payment Complete!</div>
-                                <p className="font-sans font-bold text-black/60 mb-1 leading-none text-[6.5px]">Backed: BabyPush Special</p>
-                                
-                                <div className="my-1 py-0.5 px-1.5 bg-yellow-101 border border-black/80 rounded inline-block text-[7px] font-black text-black">
-                                  Receipt: <span className="text-rose-600 tracking-wider font-extrabold">kofi-848c7dd1b4</span>
-                                </div>
-                                
-                                <p className="text-[5.5px] text-black/40 font-sans mt-0.5">Keep this ID to claim your credits</p>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="bg-amber-105/20 border border-dashed border-yellow-400 p-2.5 rounded-lg text-[8.5px] leading-relaxed text-black/75 font-semibold font-sans">
-                            💡 <strong className="text-amber-800">Friendly Tip:</strong> Our server matches your Transaction ID against real-time webhooks sent from Ko-fi's secure servers! If you just paid, please allow <strong>10 to 30 seconds</strong> for the payment to register fully.
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                    {/* Render standard PayPal script/container */}
+                    <div className="py-2">
+                      <PayPalButton />
+                    </div>
                   </div>
-                </div>
 
-                <div className="text-center mt-3">
-                  <a
-                    href="https://ko-fi.com/s/848c7dd1b4"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-[9px] text-[#FF5E5B] hover:text-[#d43f3c] font-black uppercase tracking-widest bg-white border-2 border-black py-1 px-3 rounded-lg shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 transition-all cursor-pointer"
-                  >
-                    ☕ BUY VIA KO-FI SECURE CHECKOUT &rarr;
-                  </a>
-                </div>
-              </div>
+                  {/* Secure PayPal Claim Station */}
+                  <div className="bg-yellow-101/50 border-3 border-black rounded-2xl p-4 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+                    <h4 className="text-[11px] font-black uppercase tracking-wider text-black mb-1 flex items-center justify-center gap-1.5">
+                      🛡️ Secure Auto-Verification & Instant Token Credit
+                    </h4>
+                    <p className="text-[9px] text-black/65 font-medium mb-3.5 text-center leading-relaxed">
+                      Paid via our PayPal checkout? Enter your <strong>PayPal Transaction ID or Order Code</strong> (e.g. from receipt screen/email) below to claim immediately!
+                    </p>
+
+                    <div className="space-y-3">
+                      <div className="bg-white border-2 border-black p-3.5 rounded-xl text-left shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">
+                        <label className="text-[8.5px] font-black uppercase tracking-wide text-black/75 block mb-1.5 font-sans">
+                          Enter PayPal Transaction ID or Order Code
+                        </label>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <input 
+                            type="text"
+                            value={paypalTxId}
+                            onChange={(e) => setPaypalTxId(e.target.value)}
+                            className="flex-1 bg-white border-2 border-black py-2 px-3 rounded-lg font-bold text-xs outline-none text-black placeholder:text-black/30"
+                            placeholder="e.g. 47F5ZGZM4R5SC or email receipt ID"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => creditPaypalDonation(paypalTxId)}
+                            disabled={paymentLoading || !paypalTxId.trim()}
+                            className={`sm:w-auto px-5 py-2 bg-yellow-400 hover:bg-yellow-500 text-black font-black border-2 border-black rounded-lg text-xs uppercase cursor-pointer text-center shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 transition-all flex items-center justify-center gap-1.5 min-w-[140px] ${(!paypalTxId.trim() || paymentLoading) ? 'opacity-55 cursor-not-allowed' : ''}`}
+                          >
+                            {paymentLoading ? (
+                              <>🌀 Verifying...</>
+                            ) : (
+                              <>💳 Claim Now</>
+                            )}
+                          </button>
+                        </div>
+                        
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-2 pt-2 border-t border-dashed border-black/10">
+                          <p className="text-[7.5px] text-black/50 font-bold uppercase tracking-wide">
+                            🔒 Validated via official PayPal Webhook. Prevents double-claiming.
+                          </p>
+                          
+                          <button 
+                            type="button"
+                            onClick={() => setShowPaypalGuide(!showPaypalGuide)}
+                            className="text-[8px] font-black text-rose-600 hover:text-rose-700 underline cursor-pointer uppercase flex items-center gap-1"
+                          >
+                            {showPaypalGuide ? "💡 Hide Guide" : "💡 Where's my Receipt Code?"}
+                          </button>
+                        </div>
+
+                        <AnimatePresence>
+                          {showPaypalGuide && (
+                            <motion.div 
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: "auto" }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="bg-stone-50 border-2 border-black rounded-xl p-3 text-left space-y-3 mt-3 overflow-hidden"
+                            >
+                              <div className="bg-yellow-50 border-2 border-yellow-300 rounded-xl p-3 space-y-1.5">
+                                <h5 className="text-[9.5px] font-black uppercase text-yellow-950 flex items-center gap-1">
+                                  ❤️ 1. Direct Server Support Contribution
+                                </h5>
+                                <p className="text-[8.5px] text-black/80 font-bold leading-relaxed">
+                                  PayPal support options directly sustain baby server operations and database clusters. To express our gratitude, the grid credits <strong>1 Token per $1.00 USD supported</strong> immediately.
+                                </p>
+                              </div>
+
+                              <h5 className="text-[9px] font-black uppercase text-black border-b border-black/10 pt-1 pb-1 flex items-center gap-1">
+                                📋 2. How to Retrieve Your Receipt Code
+                              </h5>
+                              <p className="text-[8px] text-black/70 leading-relaxed font-semibold">
+                                - Right after payment, look for the unique <strong>Capture / Transaction ID</strong> shown on the transaction details page.<br/>
+                                - You will also receive an official email confirmation from PayPal listing this Receipt ID.<br/>
+                                - Simply paste that ID in the verify box above, and your tokens will credit instantly!
+                              </p>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Ko-fi Rate Info & Checkout Button */}
+                  <div className="bg-white border-3 border-black rounded-2xl p-4 sm:p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-center space-y-4">
+                    <div className="bg-rose-50 border border-rose-200/60 rounded-xl p-3.5 text-center space-y-1">
+                      <div className="text-[11px] font-black uppercase text-[#FF5E5B] tracking-wide">
+                        💝 Support Conversion Rate
+                      </div>
+                      <div className="text-xl font-black text-black font-sans leading-none my-1 font-mono">
+                        $1.00 USD = 1 Token
+                      </div>
+                      <p className="text-[9px] text-black/65 font-medium leading-normal max-w-sm mx-auto">
+                        Support any amount you wish! The server automatically processes your donation value into game credits (e.g., <strong className="text-rose-600">20 Tokens</strong> on a $20 support).
+                      </p>
+                    </div>
+
+                    <a 
+                      href="https://ko-fi.com/s/848c7dd1b4"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-3.5 text-center bg-[#FF5E5B] hover:bg-[#ff4a47] text-white font-black text-[11px] border-3 border-black rounded-xl hover:-translate-y-0.5 active:translate-y-0.5 transition-all block uppercase shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]"
+                    >
+                      ☕ SUPPORT SEAMLESSLY ON KO-FI &rarr;
+                    </a>
+                  </div>
+
+                  {/* Secure Claim Station */}
+                  <div className="bg-yellow-101/50 border-3 border-black rounded-2xl p-4 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+                    <h4 className="text-[11px] font-black uppercase tracking-wider text-black mb-1 flex items-center justify-center gap-1.5">
+                      🛡️ Secure Auto-Verification & Instantly Credit Any Custom Amount
+                    </h4>
+                    <p className="text-[9px] text-black/65 font-medium mb-3.5 text-center leading-relaxed">
+                      Support any amount via the checkout button. Once paid, simply enter your <strong>Receipt / Transaction ID</strong> below to claim your tokens immediately!
+                    </p>
+
+                    <div className="space-y-3">
+                      <div className="bg-white border-2 border-black p-3.5 rounded-xl text-left shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)]">
+                        <label className="text-[8.5px] font-black uppercase tracking-wide text-black/75 block mb-1.5 font-sans">
+                          Enter Ko-fi Transaction ID / Receipt Code
+                        </label>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <input 
+                            type="text"
+                            value={kofiTxId}
+                            onChange={(e) => setKofiTxId(e.target.value)}
+                            className="flex-1 bg-white border-2 border-black py-2 px-3 rounded-lg font-bold text-xs outline-none text-black placeholder:text-black/30"
+                            placeholder="e.g. kofi-1a2b3c (as shown on your email receipt)"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => creditKofiDonation(0, "", kofiTxId)}
+                            disabled={paymentLoading || !kofiTxId.trim()}
+                            className={`sm:w-auto px-5 py-2 bg-[#FF5E5B] text-white font-black border-2 border-black rounded-lg text-xs uppercase cursor-pointer text-center shadow-[1.5px_1.5px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 active:translate-y-0.5 transition-all flex items-center justify-center gap-1.5 min-w-[140px] flex-shrink-0 ${(!kofiTxId.trim() || paymentLoading) ? 'opacity-55 cursor-not-allowed' : ''}`}
+                          >
+                            {paymentLoading ? (
+                              <>🌀 Verifying...</>
+                            ) : (
+                              <>☕ Claim Now</>
+                            )}
+                          </button>
+                        </div>
+                        
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-2 pt-2 border-t border-dashed border-black/10">
+                          <p className="text-[7.5px] text-black/50 font-bold uppercase tracking-wide">
+                            🔒 Validated via official Ko-fi Webhook. Prevents double-claiming.
+                          </p>
+                          
+                          <button 
+                            type="button"
+                            onClick={() => setShowKofiGuide(!showKofiGuide)}
+                            className="text-[8px] font-black text-rose-600 hover:text-rose-700 underline cursor-pointer uppercase flex items-center gap-1"
+                          >
+                            {showKofiGuide ? "💡 Hide Guide" : "💡 How does this work? (Important Payment/Code Guide)"}
+                          </button>
+                        </div>
+
+                        <AnimatePresence>
+                          {showKofiGuide && (
+                            <motion.div 
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: "auto" }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="bg-stone-50 border-2 border-black rounded-xl p-3 text-left space-y-3 mt-3 overflow-hidden"
+                            >
+                              <div className="bg-rose-50 border-2 border-rose-300 rounded-xl p-3 space-y-1.5">
+                                <h5 className="text-[9.5px] font-black uppercase text-rose-750 flex items-center gap-1">
+                                  ❤️ 1. Your Support is a Direct Donation to the Server & Charity
+                                </h5>
+                                <p className="text-[8.5px] text-black/80 font-bold leading-relaxed">
+                                  When you click the checkout button above, you are making a <strong className="text-rose-700 font-extrabold font-sans">direct donation</strong> to support server upkeeps and features. To say thanks, our system awards <strong>1 Game Token for every $1.00 USD donated</strong>.
+                                </p>
+                              </div>
+
+                              <h5 className="text-[9px] font-black uppercase text-black border-b border-black/10 pt-1 pb-1 flex items-center gap-1">
+                                📋 2. How to Retrieve Your Receipt Code
+                              </h5>
+                              <p className="text-[8px] text-black/80 font-bold leading-relaxed">
+                                Look for the unique Receipt ID (e.g. kofi-xxxx) on your transaction complete receipt or checkout thank success screen, and paste it here!
+                              </p>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="text-center mt-5">
