@@ -7,12 +7,12 @@ import admin from "firebase-admin";
 
 dotenv.config();
 
-if (!admin.apps.length) {
-  admin.initializeApp();
-}
-const db = new admin.firestore.Firestore({
-  databaseId: "ai-studio-07a2b1ab-3082-4aa5-8a0a-93f535e890ae"
-});
+import { getFirestore } from "firebase-admin/firestore";
+
+const firebaseAdminApp = !admin.apps.length 
+  ? admin.initializeApp({ projectId: "ai-studio-07a2b1ab-3082-4aa5-8a0a-93f535e890ae" })
+  : admin.app();
+const db = getFirestore(firebaseAdminApp, "ai-studio-07a2b1ab-3082-4aa5-8a0a-93f535e890ae");
 
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
