@@ -8,12 +8,9 @@ import admin from "firebase-admin";
 dotenv.config();
 
 if (!admin.apps.length) {
-  admin.initializeApp({
-    projectId: "babypush"
-  });
+  admin.initializeApp();
 }
 const db = new admin.firestore.Firestore({
-  projectId: "babypush",
   databaseId: "ai-studio-07a2b1ab-3082-4aa5-8a0a-93f535e890ae"
 });
 
